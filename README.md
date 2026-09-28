@@ -1,10 +1,22 @@
 # hujan-badai
 
+![Storm tracks over Indonesia, one week of December 2020](docs/img/storm_tracks.png)
+
+<sub>One week, 1 to 7 December 2020. Each line is the path of one storm's
+volume-weighted centre; colour is peak intensity. 2,700 of the 9,694 storms in that
+week, those above 0.05 km&sup3;, drawn at `h` = 4.0 mm/hr. Made by
+[`src/figure_tracks.py`](src/figure_tracks.py).</sub>
+
 Object-based storm detection and tracking over Indonesia, from GPM IMERG half-hourly
 precipitation. Each storm is a connected object in space **and** time, so it has a
 birth, a track, a life and a death rather than being a set of unrelated rainy pixels.
 
-The catalogue covers **1998-2025**, **27.75** years, **13,386,185** storms, **618,505** km3 of rainfall, one Parquet file per year.
+The catalogue covers **1998-2025**, **27.75** years, **13,386,185** storms,
+**618,505 km&sup3;** of rainfall, one Parquet file per year.
+
+**[Explore the catalogue](https://bennyistanto.github.io/hujan-badai/)** - an
+interactive page covering the method, a worked flood case study, the seasonal cycle,
+the diurnal land-sea signal, warning lead time and severity.
 
 ---
 
@@ -119,8 +131,33 @@ The tree also makes `h` cheap to sweep, because it is built once and cut many ti
   overlap percolates exactly as CCL did. *(Findings 46-47)*
 - **Climate region does not predict warning lead time.** All three derived regions give
   a median 3.5 h. Coastal geometry does predict it. *(Finding 53)*
+- **Ranking events instead of cells does not rescue severity either.** Linking storms
+  into multi-day families and ranking those moves a real flood from the 99.58th
+  percentile to the 99.70th, and leaves its class unchanged. The linking rule cannot be
+  loosened to fix it: at 100 km one family already swallows 71-94% of a month's rain.
+  A rule tight enough to stop families percolating is too tight to assemble a four-day
+  flood into one object. *(Findings 47, 61)*
 
-### 5. Smaller departures
+### 5. What does work for event severity
+
+No level of the object hierarchy is the right unit for a flood, because the quantity a
+flood responds to is not carried by any single object. Integrating the catalogue over
+an **area and a window** is:
+
+| Area | Window | Rank in 27 years | vs median year |
+|---|---|---|---|
+| **Jabodetabek** | **2 days** | **1 of 27** | **1.74x** |
+| Jabodetabek | 4 days | 2 of 27 | 1.25x |
+| Jabodetabek | 7 days | 10 of 27 | 1.15x |
+| Jakarta and West Java | 4 days | 27 of 27 | 0.65x |
+
+The New Year 2020 Jakarta flood is the largest 2-day total in the record over the
+catchment that flooded, and below an ordinary year over a region seven times larger.
+Both are correct. **An event severity is undefined until the area and the duration are
+fixed**, which is the sharpest form of a lesson that recurs throughout this project.
+*(Finding 62)*
+
+### 6. Smaller departures
 
 | | Original | Here | Why |
 |---|---|---|---|
@@ -212,6 +249,7 @@ python src/build_year.py --year 1998 2025 --prominence 4
 | `severity.py` | Nine severity classes from a reference population |
 | `families.py` | Storms linked into multi-day events, across month and year boundaries |
 | `family_severity.py` | Severity with the event as the unit, and event ranking by area and window |
+| `figure_tracks.py` | The track map at the top of this file |
 | `diurnal.py` | Land-sea diurnal cycle, in local time |
 | `transition.py` | Sea-to-land crossings and warning lead time |
 | `geo.py` | Natural Earth land, coastline, province and distance rasters |
@@ -317,10 +355,48 @@ same `h`, not just different counts. *(Finding 28)*
 
 ---
 
+## Validation, such as it is
+
+There is no gauge or radar comparison here, so nothing in this catalogue is a
+measurement of skill. Two checks exist and both are worth stating plainly.
+
+**Against an independent extraction.** A 3x3 grid of IMERG cells over DKI Jakarta was
+pulled from IMERG **Late** on 3 January 2020, contemporaneously and with different
+software, and compared against the **Final** run read here six years later. Aligned in
+time, the totals agree to **4.3%**, about what a Late-minus-Final difference should be.
+That validates the loading, subsetting, gridding and unit handling. *(Finding 65)*
+
+Two traps surfaced in making that comparison, both of which would silently corrupt any
+similar check:
+
+- the 2020 extraction is timestamped in Jakarta local time while everything here is
+  UTC, so as labelled the two series **anti-correlate** (r = -0.08, rising to +0.74
+  once shifted);
+- its per-cell column sums of 200 to 350 look like millimetres but are sums of mm/hr at
+  half-hourly steps, so the true depths are **half** of them. The doubled figure lands
+  right on the range city gauges reported, which is exactly what makes it dangerous.
+  *(Finding 66)*
+
+**Against gauges, where it fails.** On 1 January 2020 IMERG's wettest 11 km cell over
+Jakarta reads **109.5 mm**; the most it finds anywhere near the city in any rolling
+24 hours is **190.5 mm**. Gauges recorded **200 to 380 mm**, the highest daily total
+since records began in 1866. The satellite sees roughly **half** the rain that fell at
+the worst gauges, because an 11 km cell averages over far more area than the convective
+core that produces a gauge extreme. Every volume and severity figure here inherits
+that: they are computed correctly from what IMERG reports, and what IMERG reports is
+low at the extreme. *(Finding 64)*
+
+---
+
 ## What this is not
 
-- **Not validated.** No gauge or radar comparison has been made. This is a catalogue,
-  not a measurement of skill. Any statement of accuracy would be unsupported.
+- **Not validated against ground truth.** No gauge or radar comparison has been made.
+  The one external check that exists is against another satellite extraction, which
+  tests the plumbing rather than the physics. Any statement of skill would be
+  unsupported.
+- **Not able to see the extreme.** IMERG reads about half what Jakarta's gauges
+  recorded on the worst day of the 2020 flood. That is a property of an 11 km satellite
+  estimate, not a bug, and it bounds what these volumes can be used for.
 - **Not an impact product.** Detecting rain over a place is not evidence of flooding.
   Tested directly against the Jakarta flood of 2020-01-01: the storms over the city
   were in the top few percent of the 28-year population, the month was 182nd of 333
@@ -344,7 +420,7 @@ same `h`, not just different counts. *(Finding 28)*
 
 The project rule is: **measure it or cite it, never assert from memory.**
 
-- [docs/findings.md](docs/findings.md) - 64 numbered findings, each with the command
+- [docs/findings.md](docs/findings.md) - 69 numbered findings, each with the command
   that produced it
 - [docs/runbook.md](docs/runbook.md) - every command, and the traps
 - [docs/sweep-prominence.md](docs/sweep-prominence.md) - the `h` parameter study
