@@ -1,32 +1,33 @@
-# Documentation of the intended environment. NOT exercised as an installer:
-# conda is not on PATH on this machine (see repo rules), so packages are installed
-# with pip into the existing miniforge base. Versions are those present or required,
-# not a tested solve.
+# The environment this project actually runs in.
+#
+# Versions are those verified present in the `climate` env on 2026-09-28, recorded
+# so a future rerun can tell whether a number moved because the science changed or
+# because a library did. This file documents the env; it has not been exercised as
+# an installer, since conda is not on PATH on the development machine.
 name: hujan-badai
 channels: [conda-forge]
 dependencies:
-  - python=3.12
-  - numpy
-  - scipy
-  - xarray
-  - netcdf4
-  - pandas
-  - matplotlib
-  - cartopy
-  - geopandas
-  - shapely
-  - pyproj
-  - rasterio
-  - scikit-learn
-  - numba
+  - python=3.11            # the climate env is 3.11.14; an earlier version of this
+                           # file said 3.12, which was simply wrong
+  # --- core, all directly imported by src/ ---
+  - numpy=2.3.5
+  - scipy=1.17.0
+  - xarray=2025.12.0
+  - netcdf4=1.7.4
+  - pandas=3.0.0
+  - matplotlib=3.10.8
+  - scikit-image=0.26.0    # watershed and h-maxima
+  - scikit-learn=1.8.0     # k-means in regions.py
+  - numba=0.63.1           # merge tree inner loop
+  - pyarrow=23.0.0         # Parquet
+  - rasterio=1.4.4         # rasterising land and province polygons
+  - cartopy=0.25.0         # Natural Earth download and cache
+  - geopandas=1.1.3        # reading boundary files
+  - requests=2.32.5        # OPeNDAP and CMR. This was missing from an earlier
+                           # version of this file, so any env built strictly from
+                           # it would have failed at import
+  - jupyterlab=4.5.3
   - tqdm
-  # --- not currently installed, required before the proposed method runs ---
-  - scikit-image     # 3D watershed and local maxima. Hard requirement.
-  - dask             # chunked reads for multi-year runs
-  - zarr             # chunked intermediate storage
-  - networkx         # merge tree / storm hierarchy
-  - h5py
-  - pyarrow          # Parquet storm catalogue
-  - jupyterlab
-  # --- optional, for benchmarking the proposed method against prior art ---
-  # - tobac
+  # --- installed in the dev env but NOT imported anywhere in src/ or notebooks ---
+  # dask, zarr, h5py, networkx, shapely, pyproj. Left out deliberately.
+  # - tobac                # only for benchmarking against prior art
