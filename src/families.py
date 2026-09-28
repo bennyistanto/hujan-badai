@@ -124,6 +124,38 @@ def percolation_share(g: pd.DataFrame) -> float:
     return float(g.volume_km3.max() / tot) if tot else 0.0
 
 
+def _load_padded(y: int, product: str, h: float, cols, pad_days: int):
+    """Year `y` with the tail of y-1 and the head of y+1 attached.
+
+    Without the pad, a family alive at midnight on New Year is cut in two by the file
+    boundary rather than by anything physical. The 2019-12-30 to 2020-01-02 Jakarta
+    event is exactly that case: 72 of its storms sit in the 2019 catalogue and 51 in
+    the 2020 one.
+    """
+    def read(year):
+        f = DATA_PROCESSED / f"catalogue_{product}_{year}_h{h:g}.parquet"
+        if not f.exists():
+            return None
+        d = pd.read_parquet(f, columns=cols)
+        return d[~(d.truncated_time | d.truncated_space)].dropna(
+            subset=["wcentroid_lat", "wcentroid_lon"])
+
+    core = read(y)
+    if core is None:
+        return None
+    parts = [core]
+    pad = pd.Timedelta(days=pad_days)
+    before = read(y - 1)
+    if before is not None:
+        parts.insert(0, before[pd.to_datetime(before.end_time)
+                               >= pd.Timestamp(y, 1, 1) - pad])
+    after = read(y + 1)
+    if after is not None:
+        parts.append(after[pd.to_datetime(after.start_time)
+                           <= pd.Timestamp(y, 12, 31) + pad])
+    return pd.concat(parts, ignore_index=True)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--year", type=int, nargs="+", required=True)
@@ -131,6 +163,8 @@ def main() -> None:
     ap.add_argument("--h", type=float, default=4.0)
     ap.add_argument("--gap-h", type=float, default=DEFAULT_GAP_H)
     ap.add_argument("--dist-km", type=float, default=DEFAULT_DIST_KM)
+    ap.add_argument("--pad-days", type=int, default=2,
+                    help="days of the adjacent years to link across the boundary")
     a = ap.parse_args()
 
     years = (list(range(a.year[0], a.year[1] + 1)) if len(a.year) == 2
@@ -141,27 +175,30 @@ def main() -> None:
 
     all_fam = []
     for y in years:
-        f = DATA_PROCESSED / (f"catalogue_{a.product or PRODUCT}_{y}"
-                              f"_h{a.h:g}.parquet")
-        if not f.exists():
+        df = _load_padded(y, a.product or PRODUCT, a.h, cols, a.pad_days)
+        if df is None:
             print(f"{y}: no catalogue, skipped"); continue
-        df = pd.read_parquet(f, columns=cols)
-        df = df[~(df.truncated_time | df.truncated_space)].dropna(
-            subset=["wcentroid_lat", "wcentroid_lon"]).reset_index(drop=True)
-        # Link within each month: the catalogue is segmented per month, so a family
-        # cannot legitimately span the boundary anyway.
-        parts = []
-        for m, gm in df.groupby("month"):
-            gm = gm.reset_index(drop=True)
-            g = summarise(gm, link(gm, a.gap_h, a.dist_km))
-            g["year"], g["month"] = y, m
-            parts.append(g)
-        fam = pd.concat(parts, ignore_index=True)
+
+        # Link the whole padded year in one pass. An earlier version linked month by
+        # month, on the grounds that the catalogue was segmented per month so a family
+        # could not legitimately span the boundary. That stopped being true when
+        # build_year.py started padding months (Finding 35): storms now cross midnight
+        # on the 1st intact, and a family that spans a month or a year boundary is
+        # real. Splitting them is what cut the 2019-12-31 Jakarta event in two.
+        fam = summarise(df, link(df, a.gap_h, a.dist_km))
+
+        # Claim by start: a family beginning in the previous year's pad belongs to
+        # that year, and will be kept when that year is built. Without this the pad
+        # would duplicate families across adjacent years.
+        keep = pd.to_datetime(fam.start).dt.year == y
+        fam = fam[keep].copy()
+        fam["year"] = y
+        fam["month"] = pd.to_datetime(fam.start).dt.month
         fam["family_uid"] = (fam.year.astype(str) + "-" + fam.month.astype(str)
                              + "-" + fam["fam"].astype(str))
         all_fam.append(fam)
         print(f"{y}: {len(df):,} storms -> {len(fam):,} families, "
-              f"largest holds {100*percolation_share(fam):.1f}% of the rain")
+              f"largest holds {100*percolation_share(fam):.2f}% of the rain")
 
     if not all_fam:
         return
