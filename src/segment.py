@@ -20,11 +20,12 @@ Both return an int32 label array, 0 for background.
 
 On the merge tree
 -----------------
-The design in docs/plan.md calls for retaining the saddle structure so substorms
-and split/merge history come for free. That is not implemented here yet.
-`label_watershed` at several `prominence` values gives a practical hierarchy in
-the meantime; a real merge tree is a later refinement. Do not describe this module
-as providing one.
+Neither function here builds one. Retaining the saddle structure, so that substorms
+and split/merge history come for free, is `mergetree.py`; use `mergetree.segment_at`
+for anything that needs the hierarchy. `label_watershed` at several `prominence`
+values gives a practical approximation, and is kept as the independent second
+method: Finding 28 uses the disagreement between the two to show which statistics
+are method-robust. Do not describe this module as providing a merge tree.
 """
 from __future__ import annotations
 
