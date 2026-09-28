@@ -1457,3 +1457,314 @@ A domain-wide median lead time of 3.5 h hides a 2.0 to 5.0 h range between provi
 Warning value is highest where storms form far offshore, and the Malacca Strait coasts
 are structurally the hardest to warn: not because their storms are weaker, but because
 there is no room for them to form far enough away.
+
+## Run 21 - 2026-09-28, exporting the catalogue for a public dashboard
+
+```
+python src/export_site.py
+```
+
+Reads all 28 catalogues plus the derived products and writes 15 JSON files, 896 KB
+total, to `site/data/`. The dashboard reads only those files, so nothing on the
+published page is retyped from prose. Reconciling the export against the findings it
+was meant to display turned up three estimator questions that had been left implicit.
+
+### Finding 54: Finding 37's seasonal cycle is biased by the partial year
+
+The share of annual rainfall per calendar month depends on how the years are pooled,
+and the record ends mid-year:
+
+| Month | pooled, all years | pooled, complete years | mean of per-year shares |
+|---|---|---|---|
+| Jan | 10.59 | 10.43 | 10.61 |
+| **Aug** | **5.97** | **5.80** | **5.68** |
+| Oct | 6.95 | 7.18 | 7.03 |
+| Nov | 8.85 | 9.15 | 9.08 |
+| **Dec** | **11.14** | **11.51** | **11.53** |
+| **Dec/Aug** | **1.87x** | **1.98x** | **2.03x** |
+
+`pooled, all years` reproduces Finding 37 exactly, which confirms that is the estimator
+it used. It is also the biased one: 2025 contributes January to September and nothing
+from October to December, because IMERG Final V07 ends 2025-09-30. Nine extra months of
+dry-season volume with no matching wet-season volume deflates the late-year shares and
+inflates the mid-year ones.
+
+The bias is small but systematic and it moves the headline ratio: **December over
+August is 1.98x over complete years, not the 1.87x previously reported**. The direction
+of every month's error is predictable from which months 2025 contributed.
+
+Finding 37's qualitative conclusions are unaffected. December is still wettest, August
+still driest, January still second. Only the ratio moves, and it moves against the
+domain-wide figure quoted in Finding 44, which shares the same partial-year pooling.
+
+**The dashboard uses `pooled, complete years` and ships all three series** so the
+difference is visible rather than hidden in a choice.
+
+### Finding 55: the 54.52x monsoonal contrast is a per-cell mean, not a volume ratio
+
+Finding 44's headline depends on how cells are weighted, which the finding did not say:
+
+| Region | equal weight per cell | weighted by volume |
+|---|---|---|
+| monsoonal | **54.52x** (peak Jan, trough Aug) | 43.76x (peak Jan, trough Aug) |
+| transitional | 5.31x (peak **Mar**) | 4.65x (peak **Dec**) |
+| equatorial | 1.54x (peak Dec) | 1.49x (peak Dec) |
+| domain-wide | - | 1.87x (peak Dec, trough Aug) |
+
+Equal weight per cell reproduces 54.52x exactly, so that is what Finding 44 measured:
+it is the k-means cluster centre, an average of each cell's own normalised seasonal
+shape. Weighting by rainfall gives 43.76x.
+
+Neither is wrong. The first answers "how seasonal is a typical cell in this region",
+the second "how seasonal is this region's rainfall". They differ because the wettest
+cells in the monsoonal region are less extreme in their seasonality than the driest
+ones. The transitional region even changes its peak month between the two, March
+against December, which makes quoting one number without the weighting genuinely
+ambiguous.
+
+**Both are now exported and the dashboard shows both columns.**
+
+### Finding 56: the r = +0.877 lead-time correlation depends on a province cut
+
+Finding 53 reports Pearson r = +0.877 across 30 provinces. There are 34 provinces with
+sea-formed storms, so a filter was applied that the finding did not state:
+
+| Minimum storms per province | Provinces | Pearson | Spearman |
+|---|---|---|---|
+| none | 34 | 0.836 | 0.848 |
+| 100 | 33 | 0.837 | 0.853 |
+| 500 | 32 | 0.838 | 0.853 |
+| **1000** | **30** | **0.877** | **0.893** |
+
+n >= 1000 reproduces the published pair exactly. The jump between 500 and 1000 comes
+from dropping two small-sample provinces whose median lead time is noisy, not from any
+change in the relationship.
+
+The finding stands: the correlation is strong and positive on any cut, ranging 0.836 to
+0.877. But **the threshold has to be stated with the number**, and the export now does,
+carrying both r values so neither can be quoted without the other being visible.
+
+### What the export does not recompute
+
+Two figures on the dashboard come from `docs/findings.md` rather than from the
+catalogue: the CCL percolation share (0.901) and captured fraction at the published
+threshold. Reproducing them needs the IMERG cube and a run of `src/probe.py`, not the
+catalogue, so they are tagged `from_findings` in `site/data/method.json` and the page
+labels them as quoted. Everything else on the page is computed by the export.
+
+### Not a finding, but worth recording: a silent failure mode in the map
+
+The dashboard's first map rendered at world extent. The bounding box handed to d3-geo
+as a projection domain was wound counterclockwise, and d3-geo reads polygon rings
+spherically: the interior is the side to the ring's left, so a counterclockwise box
+describes the whole globe minus Indonesia. It fits that, draws a correct world map, and
+reports no error. Reversing the ring fixes it. Worth knowing because nothing in the
+data, the console or the projection API indicates a problem.
+
+## Run 22 - 2026-09-28, the Jakarta New Year 2020 flood as a test case
+
+```
+python src/export_site.py          # writes rank_context.json and accumulation.json
+```
+
+Prompted by a challenge to a claim on the dashboard. The page said every storm over
+Jakarta during the flood fell in the lowest severity class, and read that as the
+storms being individually unremarkable. Checked, the claim is true and misleading, and
+the checking produced three results worth keeping.
+
+### Finding 57: a severity class is not a rank, and quoting it as one misleads
+
+All 137 catalogued storms over the Jakarta box during 2019-12-30 to 2020-01-02 sit in
+the lowest of the nine severity classes. So do **99.8% of all 12.45M storms in the
+record**, because the band edges are exceedance rates set at 500 and 50 storms a year
+(Finding 40) and are therefore built to isolate an operationally rare tail rather than
+to spread the population.
+
+Measured as percentiles of the same population instead:
+
+| | Threshold | Event storms above it | Share |
+|---|---|---|---|
+| p50 | 0.0074 km3 | 95 | 69.3% |
+| p90 | 0.1129 km3 | 30 | 21.9% |
+| p99 | 0.4985 km3 | 3 | 2.2% |
+| p99.9 | 1.1911 km3 | 0 | 0% |
+
+The largest, starting 2019-12-31 05:00 UTC, carried **0.721 km3**: the
+**99.58th percentile**, rank 52,034 of 12,453,713.
+
+So these were large storms, well into the upper tail, and the class label said
+"very low". Both statements are correct and they point in opposite directions. The
+class is a coarse instrument near the median and the dashboard now shows the
+percentile alongside it.
+
+**This is a reporting rule, not a defect in the scale.** A nine-class scheme whose
+lowest class holds 99.8% of the population is fine for flagging extremes and useless
+for comparing ordinary storms. Never quote the class without the percentile.
+
+### Finding 58: IMERG under-reads the flood's peak 24 h against gauges
+
+IMERG Final V07, accumulated over 2019-12-30 to 2020-01-02, depth per step `R * 0.5`:
+
+| Area | Cells | Mean, 4 days | Wettest cell, 4 days | Peak rolling 24 h, wettest cell |
+|---|---|---|---|---|
+| DKI Jakarta | 9 | 158.7 mm | 181.1 mm | **154.9 mm** |
+| Bogor / Ciliwung headwaters | 12 | 136.4 mm | 189.9 mm | 143.2 mm |
+| Jabodetabek | 81 | 126.9 mm | 200.9 mm | 161.6 mm |
+
+Gauges in Jakarta recorded substantially more over 1 January: the widely reported
+figures for that event are in the 200 to 380 mm range in 24 h, against IMERG's peak
+24 h of 154.9 mm on the wettest 0.1 degree cell. That is roughly a factor of two low.
+
+Expected, and worth stating rather than hiding: an 11 km cell averages over an area
+much larger than the convective core that produces a gauge extreme, and satellite
+retrievals smooth heavy rain. It bounds what this catalogue can be used for. **It also
+means the catalogue's volumes are not an upper bound on local depth.**
+
+The timing does match. IMERG's heaviest hours over DKI Jakarta are late on 31 December
+UTC into the early hours of 1 January UTC, which is the small hours of 1 January local
+(UTC+7), the night the city flooded.
+
+### Finding 59: the flood period is unremarkable at the national monthly scale
+
+Ranking all 333 months in the record by total catalogued rainfall volume:
+
+| Month | Volume | Rank |
+|---|---|---|
+| 2024-12 | 3,603 km3 | 1 |
+| 2019-12 | 1,822 km3 | **182** |
+| 2020-01 | 1,853 km3 | **174** |
+
+December 2019 and January 2020 are both middling months domain-wide. A catastrophic
+local flood is entirely compatible with an ordinary month nationally, which is the
+clearest available demonstration that **domain-aggregated rainfall statistics carry no
+information about local impact**. It is the same lesson as Finding 44's 54x regional
+contrast, at a different scale.
+
+### Also corrected: the dashboard's domain map was showing an arbitrary month
+
+The full-domain map defaulted to December 2020, inherited from the sweep study, where
+it had been chosen as the wettest month **of 2020**. Nothing marked it as special in
+the full record, and it is not: it ranks 36th of 333. The map now shows the same four
+days as the detail map, which removes the implied claim and lets the two be read
+together.
+
+### Method note: sum of maxima is not the maximum of sums
+
+A first pass at the accumulation numbers reported 276.6 mm for the wettest DKI Jakarta
+cell by summing each timestep's spatial maximum. That is not an accumulation anywhere:
+it tracks the wettest cell as it moves. Summing over time first and then taking the
+spatial maximum gives 181.1 mm. The export does the latter. The error inflates by 53%
+here and always inflates.
+
+## Run 23 - 2026-09-28, severity at the event level
+
+```
+python src/families.py --year 1998 2025          # 34 min, rebuilt with boundary linking
+python src/family_severity.py --event 2019-12-30 2020-01-02 --bbox -7.8 -5.2 104.8 108.6
+```
+
+Finding 57 showed a per-storm severity class says nothing useful about a flood. The
+obvious fix is to rank linked events instead of individual cells. Built, tested
+against the Jakarta flood, and **it does not work**. What does work is something else.
+
+### Finding 60: family linking was splitting events at month and year boundaries
+
+`families.py` linked storms within each calendar month, on the stated grounds that
+the catalogue was segmented per month so a family could not legitimately span the
+boundary. That ceased to be true when `build_year.py` began padding months
+(Finding 35): storms now cross midnight on the 1st intact.
+
+The Jakarta event is exactly the case this breaks. Of its storms, **72 sit in the
+2019 catalogue and 51 in the 2020 one**, so the event was being cut in half by a file
+boundary before any severity question was asked.
+
+Now linked over a whole year padded two days into each neighbour, with families
+claimed by start time so the pad cannot duplicate them. Effects:
+
+| | month-wise | year-wise, padded |
+|---|---|---|
+| families, 2019-2020 | 448,389 | 447,673 (-0.2%) |
+| longest family | 101.5 h | **120.0 h** |
+| percolation (largest family share of rain) | 0.064% | 0.09% |
+
+Over the full record: **7,018,901 families, 27.75 yr, longest 191 h**, percolation
+0.016%, well under the 20% limit. In aggregate the change is small. For any event
+that straddles a boundary it is decisive.
+
+### Finding 61: ranking events instead of cells does NOT identify the flood
+
+The Jakarta event, ranked three ways against the full record:
+
+| Unit | Value | Percentile | Class | Return period |
+|---|---|---|---|---|
+| largest storm | 0.721 km3 | 99.58 | very low | meaningless (Finding 38) |
+| largest family | 1.858 km3 | **99.70** | very low | 750 a year beat it |
+
+The unit changed from a 4-hour convective cell to a 35-hour, 14-cell event, and the
+percentile moved by **0.12**. The class did not move at all.
+
+The reason is the linking rule. The event breaks into **59 families**, and the largest
+carries 1.86 km3 of the 7.64 km3 the whole event delivered. The rule cannot be
+loosened to fix this: Finding 47 measured that linking at 100 km puts 71-94% of a
+month's rain in one family and at 200 km puts 99.9% in one. **A rule tight enough to
+stop families percolating is too tight to assemble a four-day flood into one object.**
+
+This is not a failure of the family layer, which does what it was built for. It is
+evidence that **no level of an object hierarchy is the right unit for flood severity**,
+because the quantity a flood responds to is not carried by any single object.
+
+### Finding 62: rank the rainfall over an area and a window, and the event appears
+
+Total catalogued storm volume whose weighted centroid falls in an area, summed over a
+window, compared against the annual maximum of the same quantity in each of the 27
+complete years (Weibull plotting position on annual maxima, so overlapping windows
+cannot count one event twice):
+
+| Area | Window | Total | Rank | vs median year | Verdict |
+|---|---|---|---|---|---|
+| **Jabodetabek** | 1 day | 0.480 km3 | 26 of 27 | 0.55x | below a typical year |
+| **Jabodetabek** | **2 days** | **1.992 km3** | **1 of 27** | **1.74x** | **highest in the record** |
+| Jabodetabek | 3 days | 1.993 km3 | 2 of 27 | 1.45x | about 1 in 14 years |
+| Jabodetabek | 4 days | 2.016 km3 | 2 of 27 | 1.25x | about 1 in 14 years |
+| Jabodetabek | 7 days | 2.118 km3 | 10 of 27 | 1.15x | about 1 in 3 years |
+| Jakarta and West Java | 2 days | 6.955 km3 | 26 of 27 | 0.82x | below a typical year |
+| Jakarta and West Java | 4 days | 8.271 km3 | 27 of 27 | 0.65x | below a typical year |
+| Jakarta and West Java | 7 days | 14.023 km3 | 27 of 27 | 0.74x | below a typical year |
+
+Over the catchment that flooded, at a 2-day window, this is **the largest total in
+the 28-year record**, 1.74 times the median annual maximum. Over a region seven times
+larger, or at a 7-day window, the same event sits below an ordinary year.
+
+**Both rows are correct.** An event severity is undefined until the area and the
+duration are fixed, and a severity number quoted without them carries no information.
+That is a sharper statement of the same lesson as Finding 44 (the domain average
+hides a 54x regional signal) and Finding 45 (a domain-wide severity scale is 9.5x
+regionally biased): **aggregation scale is not a detail of the method, it is part of
+the claim.**
+
+The catalogue still does the work here, supplying which rain belonged to storms and
+where it fell. What changed is that the severity question is answered by integrating
+it, not by finding the largest object in it.
+
+### Also fixed: a return period that was arithmetically true and meaningless
+
+`rank_event` first reported "supported" for any return period inside the record
+length, which passed a value of **1 in 0.0013 years**. A return period needs to be at
+least about a year to be worth stating as well as inside the record to be evidenced.
+`rank_area_event` now returns one of three verdicts instead of a bare number:
+highest in the record, about 1 in N years, or below the typical annual maximum.
+
+### Band rates for the family scale, chosen by measurement
+
+| Rate (events/yr) | Lower edge | As a percentile | Lowest class holds |
+|---|---|---|---|
+| 500 and 50 (the storm scale's) | 1.15 km3 | p99.80 | 99.64% |
+| **200 and 20 (used)** | 3.50 km3 | p99.92 | 99.85% |
+| 20 and 2 | 9.87 km3 | p99.99 | 99.98% |
+| 25,000 and 2,500 | 0.19 km3 | p90.12 | 85.81% |
+| 100,000 and 12,500 | 0.016 km3 | p60.46 | 53.27% |
+
+At 253,000 events a year, a rate low enough to mean "worth a warning" is necessarily
+deep in the tail, so the lowest class stays crowded whatever is chosen. Only rates in
+the tens of thousands per year spread the population, and those are percentiles
+wearing a rate's clothing. Recorded so the choice is visible rather than inherited.
