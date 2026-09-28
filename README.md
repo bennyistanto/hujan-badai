@@ -210,10 +210,12 @@ python src/build_year.py --year 1998 2025 --prominence 4
 | `climatology.py` | Multi-year load, seasonal cycle, return periods, concentration |
 | `regions.py` | Regions derived from the catalogue's own seasonality |
 | `severity.py` | Nine severity classes from a reference population |
-| `families.py` | Storms linked into multi-day events |
+| `families.py` | Storms linked into multi-day events, across month and year boundaries |
+| `family_severity.py` | Severity with the event as the unit, and event ranking by area and window |
 | `diurnal.py` | Land-sea diurnal cycle, in local time |
 | `transition.py` | Sea-to-land crossings and warning lead time |
 | `geo.py` | Natural Earth land, coastline, province and distance rasters |
+| `export_site.py` | Small JSON summaries of the catalogue, for the published dashboard |
 
 ### Notebooks
 
@@ -224,6 +226,31 @@ python src/build_year.py --year 1998 2025 --prominence 4
 
 Both execute top to bottom in a fresh kernel, verified with `jupyter nbconvert
 --execute`, and are committed with their outputs.
+
+### Dashboard
+
+<https://bennyistanto.github.io/hujan-badai/>
+
+A static page in `site/`, plain HTML with Observable Plot and D3 from a CDN. No build
+step and no server. It reads only the JSON files in `site/data/`, so a figure on the
+page cannot drift away from the catalogue.
+
+GitHub Actions publishes it; it does **not** compute it. The catalogue is 2.6 GB and is
+not in the repository, and rebuilding it needs the IMERG archive and about nine hours,
+so the numbers are exported locally and committed:
+
+```bash
+python src/export_site.py
+python src/export_site.py --event-start 2019-12-30 --event-end 2020-01-02
+```
+
+The event window is re-segmented from the IMERG cube rather than read from the year
+catalogues, because the page's detail panel needs each storm's half-hourly history and
+the catalogue stores only whole-storm attributes. That part needs the local archive for
+those few days; everything else comes from the catalogues.
+
+That writes 15 files, about 900 KB, covering every panel. Commit `site/data/` and push;
+the workflow validates that each file is present and parses before deploying.
 
 ---
 
@@ -254,15 +281,21 @@ same `h`, not just different counts. *(Finding 28)*
 | `transitions_h4.parquet` | Sea-to-land crossings with lead times |
 | `diurnal_h4.parquet` | Land and sea initiation by hour |
 | `sweep-prominence-*.csv` | Parameter sensitivity, one file per method |
+| `site/data/*.json` | The dashboard's data, about 900 KB, the only derived output committed to the repository |
 
 ### Headline results
 
-- **December wettest (11.1% of annual rain), August driest (6.0%).** January is the
+- **December wettest (11.5% of annual rain), August driest (5.8%).** January is the
   *second* wettest over 28 years, though it ranked 9th of 12 in 2020 alone: one year
-  cannot rank the months. *(Finding 37)*
+  cannot rank the months. These are pooled over complete years only. Pooling the
+  partial 2025 as well, which Finding 37 did, gives 11.1% and 6.0% and understates the
+  December-over-August ratio as 1.87x against 1.98x. *(Findings 37, 54)*
 - **The domain average hides a 54x seasonal signal.** The monsoonal south varies
-  54.5-fold between January and August; domain-wide the figure is 1.87x, because the
-  equatorial region is 69% of the volume and nearly aseasonal. *(Finding 44)*
+  54.5-fold between its wettest and driest month with each grid cell weighted equally,
+  or 43.8-fold weighted by rainfall; domain-wide the figure is 1.87x, because the
+  equatorial region is 69% of the volume and nearly aseasonal. The weighting has to be
+  stated: it changes the transitional region's peak month from March to December.
+  *(Findings 44, 55)*
 - **A domain-wide severity scale is 9.5x biased**: 3.6 notable storms a year in the
   monsoonal region against 33.8 in the equatorial. *(Finding 45)*
 - **Land storms peak 14-16 local, oceanic storms 22-24 local**, land amplitude 4.25x
@@ -272,9 +305,15 @@ same `h`, not just different counts. *(Finding 28)*
 - **Every sea-formed storm offers lead time**, median 3.5 h over water before landfall,
   and **the largest storms offer most** (6.0 h median, 12.0 h p90). *(Finding 51)*
 - **Lead time is set by coastal geometry, not climate.** Distance offshore at formation
-  versus lead time: r = +0.877 across provinces. Riau gets 2.0 h facing the Malacca
-  Strait; Maluku Utara gets 5.0 h facing open ocean. *(Finding 53)*
+  versus lead time: r = +0.877 across the 30 provinces with at least 1,000 sea-formed
+  storms, or +0.836 across all 34. Riau gets 2.0 h facing the Malacca Strait; Maluku
+  Utara gets 5.0 h facing open ocean. *(Findings 53, 56)*
 - **Top 13% of storms carry 70.7% of the rain.** *(Finding 39)*
+- **Event severity is undefined until the area and the window are fixed.** The Jakarta
+  New Year 2020 flood is the largest 2-day total in 28 years over the catchment that
+  flooded (1.74x the median annual maximum), and below an ordinary year over a region
+  seven times larger or at a 7-day window. Both are correct, which is why the scale
+  has to be quoted with the number. *(Finding 62)*
 
 ---
 
@@ -283,6 +322,15 @@ same `h`, not just different counts. *(Finding 28)*
 - **Not validated.** No gauge or radar comparison has been made. This is a catalogue,
   not a measurement of skill. Any statement of accuracy would be unsupported.
 - **Not an impact product.** Detecting rain over a place is not evidence of flooding.
+  Tested directly against the Jakarta flood of 2020-01-01: the storms over the city
+  were in the top few percent of the 28-year population, the month was 182nd of 333
+  nationally, and IMERG's peak 24 h reads about half what city gauges recorded. A
+  per-storm catalogue is the wrong instrument for a flood. *(Findings 57-59)*
+- **Not answerable by ranking objects at all.** Ranking linked events rather than
+  individual cells moves the same flood from the 99.58th percentile to the 99.70th
+  and leaves its class unchanged, because a linking rule tight enough to stop
+  families percolating is too tight to assemble a four-day flood into one object.
+  Ranking rainfall over an area and a window does identify it. *(Findings 61-62)*
 - **Not transferable to the near-real-time runs without recalibration.** IMERG Late
   reads about 9% higher in total volume than Final. *(Finding 5)*
 - **Not free of one arbitrary choice.** `h = 4.0` is a declared scale, not an optimum,
@@ -296,7 +344,7 @@ same `h`, not just different counts. *(Finding 28)*
 
 The project rule is: **measure it or cite it, never assert from memory.**
 
-- [docs/findings.md](docs/findings.md) - 53 numbered findings, each with the command
+- [docs/findings.md](docs/findings.md) - 62 numbered findings, each with the command
   that produced it
 - [docs/runbook.md](docs/runbook.md) - every command, and the traps
 - [docs/sweep-prominence.md](docs/sweep-prominence.md) - the `h` parameter study
