@@ -216,3 +216,62 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# hujan-badai
+temp/
+data/interim/
+data/processed/
+references/paper/*.pdf
+references/notebook/*.ipynb
+__pycache__/
+data/cache/
+run.cmd
+run.ps1
+
+# ---------------------------------------------------------------------------
+# Credentials, tokens and environment files - never commit
+# Added 2026-09-27 after an expired GES DISC AWS session key set was found
+# sitting in temp/. temp/ was already ignored, but the patterns below make the
+# rule explicit wherever such a file lands.
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+!.env.template
+*.env
+.envrc
+
+# NASA Earthdata / OPeNDAP
+.netrc
+_netrc
+.dodsrc
+.urs_cookies
+
+# Cloud provider credentials
+s3credentials
+s3credentials.json
+.aws/
+aws_credentials
+*-credentials.json
+*_credentials.json
+service-account*.json
+gcp-key*.json
+
+# Google Earth Engine
+.config/earthengine/
+earthengine-credentials*
+
+# Generic secret material
+*.pem
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+secrets.json
+secrets.yaml
+secrets.yml
+.secrets/
+
+# Claude
+.claude/
+HANDOFF.md

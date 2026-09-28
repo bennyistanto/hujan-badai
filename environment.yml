@@ -1,0 +1,32 @@
+# Documentation of the intended environment. NOT exercised as an installer:
+# conda is not on PATH on this machine (see repo rules), so packages are installed
+# with pip into the existing miniforge base. Versions are those present or required,
+# not a tested solve.
+name: hujan-badai
+channels: [conda-forge]
+dependencies:
+  - python=3.12
+  - numpy
+  - scipy
+  - xarray
+  - netcdf4
+  - pandas
+  - matplotlib
+  - cartopy
+  - geopandas
+  - shapely
+  - pyproj
+  - rasterio
+  - scikit-learn
+  - numba
+  - tqdm
+  # --- not currently installed, required before the proposed method runs ---
+  - scikit-image     # 3D watershed and local maxima. Hard requirement.
+  - dask             # chunked reads for multi-year runs
+  - zarr             # chunked intermediate storage
+  - networkx         # merge tree / storm hierarchy
+  - h5py
+  - pyarrow          # Parquet storm catalogue
+  - jupyterlab
+  # --- optional, for benchmarking the proposed method against prior art ---
+  # - tobac
