@@ -786,6 +786,24 @@ def export_accumulation(start, end, product):
             "peak_24h_mean_mm": round(float(roll.mean()), 1),
         })
 
+    # Daily totals on the LOCAL calendar day, which is what a gauge reports and the
+    # only form directly comparable with the 200 to 380 mm figures published for
+    # 1 January 2020. Indonesia's western zone is UTC+7.
+    local = depth.assign_coords(time=depth.time + np.timedelta64(7, "h"))
+    daily = []
+    for name_, (a0, a1, o0, o1) in ACCUM_AREAS.items():
+        box = local.sel(lat=slice(a0, a1), lon=slice(o0, o1))
+        per_day = box.resample(time="1D").sum()
+        for t, arr in zip(per_day.time.values, per_day.values):
+            daily.append({"area": name_, "local_date": str(t)[:10],
+                          "mean_mm": round(float(arr.mean()), 1),
+                          "max_cell_mm": round(float(arr.max()), 1)})
+
+    # The most generous reading available anywhere near the city, so the comparison
+    # with gauges is not made artificially unflattering by a too-small box.
+    wide = depth.sel(lat=slice(-7.2, -5.6), lon=slice(106.0, 107.6))
+    best24 = float(wide.rolling(time=48, min_periods=48).sum().max())
+
     dki = depth.sel(lat=slice(*ACCUM_AREAS["DKI Jakarta"][:2]),
                     lon=slice(*ACCUM_AREAS["DKI Jakarta"][2:]))
     ser = pd.DataFrame({"mean_mm": dki.mean(("lat", "lon")).values,
@@ -803,6 +821,16 @@ def export_accumulation(start, end, product):
         "window": [start, end],
         "bbox": list(JAKARTA_BBOX),
         "areas": areas,
+        "daily_local": daily,
+        "best_24h_near_jakarta_mm": round(best24, 1),
+        "gauge_reference": {
+            "note": ("Gauges in Jakarta recorded 200 to 380 mm on 1 January 2020, "
+                     "the highest daily total in the city's record. The satellite "
+                     "figures above are what IMERG sees on an 11 km grid, and they "
+                     "are roughly half that. Stated so the gap is visible, not "
+                     "hidden."),
+            "reported_range_mm": [200, 380],
+        },
         "grid": grid,
         "hourly": [{"t": t.isoformat(),
                     "mean_mm": round(float(r.mean_mm), 3),
@@ -847,7 +875,7 @@ def _step_series(R, labels, lat, nt):
 
 def export_event(start: str, end: str, bbox, h: float, product: str, sc,
                  pad_days: int = 1, name: str = "tracks_jakarta.json",
-                 places=None, label: str = ""):
+                 places=None, label: str = "", domain_n: int = 400):
     """Re-segment one short window and export its storms with per-step detail.
 
     Deliberately NOT read from the year catalogues. Those carry only whole-storm
@@ -893,14 +921,50 @@ def export_event(start: str, end: str, bbox, h: float, product: str, sc,
 
     v, a, pk = _step_series(R, labels, lat, len(time))
 
+    # Claim by volume-weighted centroid time, the same rule build_year.py uses, so a
+    # storm alive at the window edge belongs to exactly one side.
+    in_window = df.wcentroid_time.between(t0, t1)
     lo_lat, hi_lat, lo_lon, hi_lon = bbox
-    keep = (
-        df.wcentroid_time.between(t0, t1) &
-        (((df.start_lat.between(lo_lat, hi_lat)) & (df.start_lon.between(lo_lon, hi_lon))) |
-         ((df.end_lat.between(lo_lat, hi_lat)) & (df.end_lon.between(lo_lon, hi_lon))))
-    )
-    df = df[keep].sort_values("total_volume_km3", ascending=False)
+    in_box = (((df.start_lat.between(lo_lat, hi_lat)) &
+               (df.start_lon.between(lo_lon, hi_lon))) |
+              ((df.end_lat.between(lo_lat, hi_lat)) &
+               (df.end_lon.between(lo_lon, hi_lon))))
 
+    def _build(sel):
+        return _event_features(df[sel].sort_values("total_volume_km3",
+                                                   ascending=False),
+                               v, a, pk, time, sc)
+
+    # Both maps are cut from THIS one segmentation. They used to come from different
+    # ones: the domain map read the year catalogues while this window was re-segmented
+    # for its per-step detail. Same days, different objects, and the two maps visibly
+    # disagreed. One segmentation, two views, is the only way they can agree.
+    dom = df[in_window].nlargest(domain_n, "total_volume_km3")
+    _write("tracks_domain.json", {
+        "meta": _meta([f"IMERG {product} {start} to {end}"],
+                      window=f"{start} to {end}", n_requested=domain_n,
+                      n_written=int(len(dom)), prominence=h,
+                      note=("the largest storms by volume in this window, cut from "
+                            "the same segmentation as the detail map below it, so "
+                            "the same storm is the same object on both.")),
+        "severity_edges": {"volume_km3": list(sc.vol_edges),
+                           "intensity_mm_hr": list(sc.int_edges),
+                           "bands": list(sc.bands), "basis": sc.basis},
+        "bbox": [-11.6, 6.6, 94.4, 141.6],
+        "window": [start, end],
+        "type": "FeatureCollection",
+        "features": _event_features(dom, v, a, pk, time, sc,
+                                    with_series=False),
+    })
+
+    df = df[in_window & in_box].sort_values("total_volume_km3", ascending=False)
+    feats = _event_features(df, v, a, pk, time, sc)
+    _write_event_file(name, feats, df, start, end, bbox, h, product, pad_days,
+                      sc, places, label)
+    return df
+
+
+def _event_features(df, v, a, pk, time, sc, with_series=True):
     feats = []
     for row in df.itertuples(index=False):
         # `storm_table` hands back the track as (timestep, lat, lon). Using it rather
@@ -929,19 +993,27 @@ def export_event(start: str, end: str, bbox, h: float, product: str, sc,
                 "truncated": bool(row.truncated_time or row.truncated_space),
                 "severity": str(cls.severity.iloc[0]),
                 "severity_index": int(cls.severity_index.iloc[0]),
-                # Hour by hour: what the storm was doing at each half-hourly step.
-                # One entry per track vertex, so the series and the line agree.
-                "series": {
-                    "t": [pd.Timestamp(time[i]).isoformat() for i in steps],
-                    "volume_km3": [round(float(v[lb, i]), 5) for i in steps],
-                    "area_km2": [round(float(a[lb, i]), 1) for i in steps],
-                    "peak_mm_hr": [round(float(pk[lb, i]), 2) for i in steps],
-                    "lon": [p[0] for p in pts],
-                    "lat": [p[1] for p in pts],
-                },
             },
         })
+        if not with_series:
+            continue
+        # Hour by hour: what the storm was doing at each half-hourly step. One entry
+        # per track vertex, so the series and the line agree. Only the detail map
+        # needs this; carrying it on the 400 domain storms tripled that file for
+        # data nothing reads.
+        feats[-1]["properties"]["series"] = {
+            "t": [pd.Timestamp(time[i]).isoformat() for i in steps],
+            "volume_km3": [round(float(v[lb, i]), 5) for i in steps],
+            "area_km2": [round(float(a[lb, i]), 1) for i in steps],
+            "peak_mm_hr": [round(float(pk[lb, i]), 2) for i in steps],
+            "lon": [q[0] for q in pts],
+            "lat": [q[1] for q in pts],
+        }
+    return feats
 
+
+def _write_event_file(name, feats, df, start, end, bbox, h, product, pad_days,
+                      sc, places, label):
     _write(name, {
         "meta": _meta([f"IMERG {product} {start} to {end}"],
                       window=f"{start} to {end}", pad_days=pad_days,
@@ -960,7 +1032,6 @@ def export_event(start: str, end: str, bbox, h: float, product: str, sc,
         "type": "FeatureCollection",
         "features": feats,
     })
-    return df
 
 
 def export_tracks(start: str, end: str, n: int, product: str, h: float, sc):
@@ -1110,11 +1181,11 @@ def main() -> None:
     export_leadtime()
     export_families()
     export_geography()
-    export_tracks(a.event_start, f"{a.event_end} 23:59", a.tracks_n,
-                  a.product, a.prominence, sc)
+    # One call, both maps: export_event segments the window once and cuts the
+    # domain view and the Jakarta view from the same labels.
     export_event(a.event_start, f"{a.event_end} 23:59", JAKARTA_BBOX,
-                 a.prominence, a.product, sc,
-                 places=JAKARTA_PLACES, label="Jakarta, New Year 2020")
+                 a.prominence, a.product, sc, places=JAKARTA_PLACES,
+                 label="Jakarta, New Year 2020", domain_n=a.tracks_n)
     export_rank_context(vols, a.event_start, f"{a.event_end} 23:59",
                         JAKARTA_BBOX, a.product, a.prominence)
     export_accumulation(a.event_start, a.event_end, a.product)
