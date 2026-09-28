@@ -4,8 +4,7 @@ Object-based storm detection and tracking over Indonesia, from GPM IMERG half-ho
 precipitation. Each storm is a connected object in space **and** time, so it has a
 birth, a track, a life and a death rather than being a set of unrelated rainy pixels.
 
-The catalogue covers **1998-2025, 27.75 years, 13,386,185 storms, 618,505 km3** of
-rainfall, one Parquet file per year.
+The catalogue covers **1998-2025**, **27.75 years**, **13,386,185 storms**, **618,505 km3** of rainfall, one Parquet file per year.
 
 ---
 
@@ -30,10 +29,12 @@ contact with this domain.
   Correction Method for Storm Prediction Detected by Satellite.* Remote Sensing 12(21),
   3538. [doi:10.3390/rs12213538](https://doi.org/10.3390/rs12213538)
 - Laverde-Barajas, M., et al. (2020). *Climatology of monsoonal rainstorm events over
-  the Lower Mekong Region.* AGU Fall Meeting poster. <https://studio.m-anage.com/agu/fm20/meetingapp.cgi/Paper/772134>.
-- Author's reference implementation ([ST-CORA v2.1.1](https://github.com/Servir-Mekong/ST-CORA), 483 lines), read in full and
-  compared against the papers in `docs/findings.md` Findings 41-43. Not vendored here;
-  cloned separately.
+  the Lower Mekong Region.* AGU Fall Meeting poster.
+  <https://studio.m-anage.com/agu/fm20/meetingapp.cgi/Paper/772134>
+- Author's reference implementation
+  ([ST-CORA v2.1.1](https://github.com/Servir-Mekong/ST-CORA), 483 lines), read in full
+  and compared against the papers in `docs/findings.md` Findings 41-43. Not vendored
+  here; cloned separately.
 
 The original targets a catchment (the Tiete, then the Lower Mekong) over a monsoon
 season. This targets a 5,200 km equatorial domain over 28 years. Most of the
@@ -62,8 +63,8 @@ Checked against the author's own code, which defaults to 6-connectivity rather t
 
 ### 2. The KDE segmentation could not have fixed it
 
-The 2020 paper adds multivariate KDE segmentation to resolve "false merging". Reading
-the author's implementation, `KED_segmentation` evaluates a Gaussian KDE over
+The 2020 paper adds multivariate KDE segmentation to resolve "false merging". In the
+author's implementation, `KED_segmentation` evaluates a Gaussian KDE over
 `[y, x, z, rain]` and keeps the points above a density threshold, returning **one
 filtered point set, not several labelled objects**. It erodes an object to its dense
 core; it never splits one into many. *(Finding 42)*
@@ -93,9 +94,7 @@ discard four fifths of it. The merge tree does both. *(Findings 15, 22-24)*
 The tree also makes `h` cheap to sweep, because it is built once and cut many times:
 8x faster than re-segmenting. *(Finding 24)*
 
-### 4. What did not work as hoped
-
-Reported because the failures shaped the design as much as the successes.
+### 4. What did not work
 
 - **The tree's own segmentation distorts volumes.** Its natural "first touch" rule
   gives a shared skirt wholesale to one peak: two nearly equal peaks split 684/177
@@ -103,19 +102,23 @@ Reported because the failures shaped the design as much as the successes.
   supplies the geometry. *(Finding 23)*
 - **`h` is not a stable parameter.** A plus-or-minus 20% change moves the storm count
   by 21% (December) and 20% (August), against a 10% stability criterion. There is no
-  canonical storm count: `h` selects the scale of system counted. *(Findings 19, 26)*
+  canonical storm count: `h` selects the scale of system counted. Captured volume, by
+  contrast, is nearly h-invariant: an 8x change in `h` moves it 1.3% with the merge tree
+  (4.0% with the watershed). Volume-based statistics are safe, count-based ones are not,
+  and between-month ratios sit close to the safe end: two independent segmentations agree
+  on the August/December ratio to within 0.006 while disagreeing on the count by 2.6x.
+  *(Findings 19-20, 26-27)*
 - **Per-storm return periods are near-meaningless at this granularity.** With 449,000
   storms a year, a 1-in-1-year storm is just the 28th largest in a 28-year record, and
   p99 corresponds to a return period of 0.0002 years. Severity bands are therefore
   stated as **exceedance rates** (storms per year), not percentiles or return periods.
   *(Findings 38, 40)*
-- **Storm age in days is not a property a storm can have.** Only 3 storms of 12.45M
-  last two days, because at `h = 4` an object is a convective cell. Age works at the
-  **family** level instead, and families need a strict link rule: bounding-box overlap
-  percolates exactly as CCL did. *(Findings 46-47)*
+- **Storm age in days is not a property a storm can have here.** Only 3 storms of
+  12.45M last two days, because at `h = 4` an object is a convective cell. Age works at
+  the **family** level instead, and families need a strict link rule: bounding-box
+  overlap percolates exactly as CCL did. *(Findings 46-47)*
 - **Climate region does not predict warning lead time.** All three derived regions give
-  a median 3.5 h. Coastal geometry does predict it. A null result worth stating.
-  *(Finding 53)*
+  a median 3.5 h. Coastal geometry does predict it. *(Finding 53)*
 
 ### 5. Smaller departures
 
@@ -166,12 +169,28 @@ sea. *(Finding 52)*
 
 ## Code
 
-Run everything under the `climate` conda env. See [docs/runbook.md](docs/runbook.md).
+### Environment
+
+`environment.yml` records the versions the results were produced with, so a future rerun
+can tell whether a number moved because the science changed or because a library did.
 
 ```bash
-conda activate climate
-python src\catalogue.py --start 2020-12-01 --end 2020-12-05
+conda env create -f environment.yml
+conda activate hujan-badai
 ```
+
+That file is a record first and an installer second: it has not been built from scratch,
+because the development machine runs these under a pre-existing env named `climate`. The
+package set is what matters, not the env name. Every command below assumes the repo root
+as the working directory. Full command reference and the traps are in
+[docs/runbook.md](docs/runbook.md).
+
+```bash
+python src/catalogue.py --start 2020-12-01 --end 2020-12-05
+python src/build_year.py --year 1998 2025 --prominence 4
+```
+
+### Modules
 
 | Module | Purpose |
 |---|---|
@@ -181,11 +200,11 @@ python src\catalogue.py --start 2020-12-01 --end 2020-12-05
 | `validate.py` | Archive integrity by NetCDF magic number; caches its verdict |
 | `download.py` | Repair or extend the archive; OPeNDAP or whole-granule routes |
 | `probe.py` | Diagnostics: wet fraction, object sizes, **percolation share** |
-| `segment.py` | `label_ccl` (baseline) and `label_watershed` |
+| `segment.py` | `label_ccl` (baseline) and `label_watershed` (second method) |
 | `mergetree.py` | The merge tree. **`segment_at` is the one to use** |
 | `storms.py` | The nine attributes per storm, vectorised |
 | `catalogue.py` | One window to Parquet, with full provenance |
-| `build_year.py` | Whole years, resumable, month-overlap handling |
+| `build_year.py` | Whole years, resumable, month-boundary padding |
 | `sweep.py` | Parameter sensitivity, with a grid that can test its own criterion |
 | `monthly.py` | Monthly totals, streamed, for picking wet and dry months by measurement |
 | `climatology.py` | Multi-year load, seasonal cycle, return periods, concentration |
@@ -198,12 +217,13 @@ python src\catalogue.py --start 2020-12-01 --end 2020-12-05
 
 ### Notebooks
 
-| Notebook | Purpose |
-|---|---|
-| `01_storm_tracking.ipynb` | Rainfall to storms: pick a date range, segment, build a catalogue, map the tracks. Runs from the online source, so no local archive is needed |
-| `02_climatology.ipynb` | What 13 million storms say: seasonal cycle, interannual variability, regions, severity, concentration, diurnal cycle, sea-to-land lead time, multi-day families. Needs the multi-year catalogue |
+| Notebook | Purpose | Needs |
+|---|---|---|
+| `01_storm_tracking.ipynb` | Rainfall to storms: pick a date range, segment, build a catalogue, map the tracks | Nothing but an Earthdata login. Fetches from NASA GES DISC with server-side subsetting, so no local archive is required. One month is the online ceiling |
+| `02_climatology.ipynb` | What 13 million storms say: seasonal cycle, interannual variability, regions, severity, concentration, diurnal cycle, sea-to-land lead time, multi-day families | The multi-year catalogue, about 2.6 GB, built by `build_year.py`. Not reproducible from the online source in a session |
 
-Both are smoke-tested end to end; every cell executes against the built catalogue.
+Both execute top to bottom in a fresh kernel, verified with `jupyter nbconvert
+--execute`, and are committed with their outputs.
 
 ---
 
@@ -211,14 +231,19 @@ Both are smoke-tested end to end; every cell executes against the built catalogu
 
 ### Per storm
 
-date and time, total volume (km3), duration, max intensity (peak voxel), centroid,
+Date and time, total volume (km3), duration, max intensity (peak voxel), centroid,
 volume-weighted centroid, start location, end location, and the trackline as WKT, plus
 max footprint, voxel count, substorms absorbed, and flags for truncation in space and
-time. Every row carries the parameters and git revision that produced it.
+time.
+
+Every row carries the parameters that produced it, including the prominence `h` and the
+segmentation method, alongside the git revision and build timestamp. The two are
+inseparable: merge tree and watershed give qualitatively different populations at the
+same `h`, not just different counts. *(Finding 28)*
 
 ### Catalogues
 
-`data/processed/catalogue_final_<year>_h4.parquet`, 28 files, about 2.8 GB.
+`data/processed/catalogue_final_<year>_h4.parquet`, 28 files, 2.6 GB.
 
 ### Derived products
 
@@ -228,7 +253,7 @@ time. Every row carries the parameters and git revision that produced it.
 | `families_final_h4_g3_d50.parquet` | Multi-day storm events |
 | `transitions_h4.parquet` | Sea-to-land crossings with lead times |
 | `diurnal_h4.parquet` | Land and sea initiation by hour |
-| `sweep-prominence-*.csv` | Parameter sensitivity |
+| `sweep-prominence-*.csv` | Parameter sensitivity, one file per method |
 
 ### Headline results
 
@@ -242,7 +267,8 @@ time. Every row carries the parameters and git revision that produced it.
   monsoonal region against 33.8 in the equatorial. *(Finding 45)*
 - **Land storms peak 14-16 local, oceanic storms 22-24 local**, land amplitude 4.25x
   against sea 1.80x. The classic maritime-continent signal, recovered without being
-  targeted, and the best independent evidence the objects are real. *(Finding 49)*
+  targeted, and the strongest available evidence that the objects are physically real.
+  *(Finding 49)*
 - **Every sea-formed storm offers lead time**, median 3.5 h over water before landfall,
   and **the largest storms offer most** (6.0 h median, 12.0 h p90). *(Finding 51)*
 - **Lead time is set by coastal geometry, not climate.** Distance offshore at formation
@@ -261,22 +287,19 @@ time. Every row carries the parameters and git revision that produced it.
   reads about 9% higher in total volume than Final. *(Finding 5)*
 - **Not free of one arbitrary choice.** `h = 4.0` is a declared scale, not an optimum,
   because no optimum exists. Quote it, and the segmentation method, with every number.
+- **Not a reproduction of ST-CORA.** The segmentation is different, and that difference
+  is the point of section 3 above.
 
 ---
 
-## Reproducibility
+## Evidence
 
-`docs/findings.md` holds 53 numbered findings, each with the command that produced it.
-The project rule is: **measure it or cite it, never assert from memory.** Several
-findings exist only because a number was re-checked and disagreed with what had been
-claimed earlier, including three in this README's own history.
+The project rule is: **measure it or cite it, never assert from memory.**
 
+- [docs/findings.md](docs/findings.md) - 53 numbered findings, each with the command
+  that produced it
 - [docs/runbook.md](docs/runbook.md) - every command, and the traps
-- [docs/findings.md](docs/findings.md) - the evidence
-- [docs/plan.md](docs/plan.md) - what is and is not possible
-- [docs/climatology-design.md](docs/climatology-design.md) - the climatology design
-- [docs/sweep-prominence.md](docs/sweep-prominence.md) - the parameter study
-- [HANDOFF.md](HANDOFF.md) - current state
+- [docs/sweep-prominence.md](docs/sweep-prominence.md) - the `h` parameter study
 
 ## License
 
