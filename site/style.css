@@ -515,3 +515,26 @@ table.data em {
   color: var(--ink);
   letter-spacing: -0.01em;
 }
+
+/* Period badge: which slice of the record a chart covers. The page mixes two-day,
+   four-day and 28-year panels, so every chart states its own span. */
+.period {
+  margin: 0 0 10px;
+  font: 500 10.5px/1.4 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.period::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  opacity: 0.8;
+}

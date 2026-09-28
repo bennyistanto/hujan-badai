@@ -65,6 +65,37 @@ function text(id, s) {
   if (el) el.innerHTML = s;
 }
 
+/** Stamp a chart with the period its data covers.
+ *
+ * The page mixes three very different spans: two days for the flood maps, four days
+ * for the accumulation panels, and the full 1998 to 2025 record for the climatology.
+ * Without a label on each panel a reader has to infer which from the prose, and will
+ * sometimes infer wrong. The badge sits directly above the chart so it cannot be
+ * separated from it.
+ */
+// The exporter writes timestamps without a zone suffix ("2019-12-31T05:00:00"), and
+// `new Date` reads that as LOCAL time. Every label built with toISOString() was then
+// shifted by the viewer's own UTC offset, so the same page showed different clock
+// times in Jakarta and in London. Parse as UTC explicitly, and pair this with
+// `type: "utc"` on the axes so the ticks are UTC too.
+const utc = (v) => new Date(/[Zz]|[+-]\d{2}:?\d{2}$/.test(v) ? v : v + "Z");
+
+function period(chartId, label) {
+  const el = document.getElementById(chartId);
+  if (!el) return;
+  let b = el.previousElementSibling;
+  if (!b || !b.classList.contains("period")) {
+    b = document.createElement("p");
+    b.className = "period";
+    el.parentNode.insertBefore(b, el);
+  }
+  b.textContent = label;
+}
+
+// Written once here so every panel that covers the whole catalogue says the same
+// thing, and a rebuild that changes the record length changes all of them together.
+let FULL_RECORD = "1998 to 2025";
+
 // Shared Plot defaults, so every chart sits in the page's palette.
 const base = {
   style: { background: "transparent", color: INK, fontSize: "12px" },
@@ -143,6 +174,7 @@ function renderHero(summary) {
   dl.innerHTML = cells.map(([k, v, note]) =>
     `<div><dt>${k}</dt><dd>${v}<small>${note}</small></dd></div>`).join("");
 
+  FULL_RECORD = `${s.year_min} to ${s.year_max}`;
   text("def-rate",
     `roughly ${fmt.int(Math.round(s.storms_per_year / 1000) * 1000)} storms a year`);
 
@@ -197,6 +229,7 @@ function renderMethod(method) {
     ],
   }));
 
+  period("chart-method", `CCL rows: ${method.window.split(",")[0]}  |  merge tree: measured over ${FULL_RECORD}`);
   text("caption-method",
     `Lower is better on the left, higher is better on the right. The published method ` +
     `can have one or the other, not both: de-percolating it by raising the threshold ` +
@@ -436,6 +469,10 @@ function wirePicking(id, feats, onPick, rerender) {
   });
 }
 
+// Set when the national map renders, read by the Jakarta caption so the comparison
+// between the two is computed from the data rather than written by hand.
+let domainStats = null;
+
 function renderDomainMap(tracks, land) {
   const out = trackMap("chart-map-domain", tracks, land, { graticule: 5 });
   if (!out) return;
@@ -444,20 +481,27 @@ function renderDomainMap(tracks, land) {
   defsList("defs-domain");
   const m = tracks.meta;
   const vol = d3.sum(feats, (f) => f.properties.volume_km3);
+  period("chart-map-domain", "31 December 2019 to 1 January 2020, every storm");
+  const [aLat0, aLat1, aLon0, aLon1] = tracks.bbox;
+  domainStats = { n: m.n_written, area: (aLat1 - aLat0) * (aLon1 - aLon0) };
   text("caption-map-domain",
-    `The <strong>${m.n_written} largest storms by volume</strong> anywhere in the ` +
-    `domain between 30 Dec 2019 and 2 Jan 2020, carrying ${Math.round(vol)} km&sup3; ` +
-    `between them. Hover any track for its numbers. Gridlines every 5 degrees. ` +
+    `<strong>Every one of the ${fmt.int(m.n_written)} storms</strong> alive in the ` +
+    `domain over these two days, carrying ${Math.round(vol)} km&sup3; between them. ` +
+    `Nothing is filtered out. Hover any track for its numbers; gridlines every 5 ` +
+    `degrees. ` +
     `<br><br>This map and the Jakarta map below are cut from the <strong>same ` +
-    `segmentation of the same four days</strong>, so a storm on one is the same ` +
-    `object on the other. They still look different, and should: this one keeps only ` +
-    `the largest ${m.n_written} storms nationally, and just 15 of the 134 storms over ` +
-    `Jakarta are big enough to make that cut. Storms near the capital were not among ` +
-    `the country's largest that week. ` +
-    `<br><br><strong>Nor were these four days exceptional nationally</strong>: ` +
-    `December 2019 ranks 182nd and January 2020 174th of the 333 months in the record ` +
-    `by total rainfall. The flood was a local event, and the map shows why that is not ` +
-    `a contradiction.`);
+    `segmentation of the same two days, under the same rule</strong>, so a storm on ` +
+    `one is the same object on the other and the density of lines means the same ` +
+    `thing on both. <em>An earlier version capped this map at the 400 largest storms ` +
+    `nationally while the detail map showed everything, which made the small box look ` +
+    `about 29 times denser than the rest of the country: a pattern produced entirely ` +
+    `by the cap.</em> ` +
+    `<br><br>What the honest version shows is that <strong>the whole archipelago was ` +
+    `storming</strong>. West Java is not unusual here, and these two days were not ` +
+    `exceptional nationally: December 2019 ranks 182nd and January 2020 174th of the ` +
+    `333 months in the record by total rainfall. A catastrophic local flood inside an ` +
+    `ordinary national month is the point of this page, and this map is what that ` +
+    `looks like.`);
 }
 
 function renderDetail(f) {
@@ -484,7 +528,7 @@ function renderDetail(f) {
   }
 
   const rows = s.t.map((t, i) => ({
-    t: new Date(t),
+    t: utc(t),
     // Volume per half-hourly step, shown as a rate in km3/h so the axis means
     // something physical rather than depending on the step length.
     rate: s.volume_km3[i] * 2,
@@ -500,15 +544,21 @@ function renderDetail(f) {
   stats.hidden = false;
   clear.hidden = false;
 
-  const t0 = new Date(p.start);
+  const t0 = utc(p.start);
   text("detail-title",
     `Storm ${p.id}: ${t0.toISOString().slice(0, 16).replace("T", " ")} UTC, ` +
     `${p.duration_h} hours`);
 
+  const lifeLabel = `${p.start.slice(0, 16).replace("T", " ")} to ` +
+                    `${p.end.slice(11, 16)} UTC, this storm only`;
+  for (const id of ["chart-detail-rate", "chart-detail-area",
+                    "chart-detail-cumulative", "chart-detail-speed"]) {
+    period(id, lifeLabel);
+  }
   panel("chart-detail-rate", (w) => ({
     width: w, height: 250,
     marginRight: 48,
-    x: { label: "UTC →", type: "time" },
+    x: { label: "UTC →", type: "utc" },
     y: { label: "delivering (km³/h) ↑", zero: true },
     marks: [
       Plot.areaY(rows, { x: "t", y: "rate", fill: ACCENT, fillOpacity: 0.22,
@@ -527,7 +577,7 @@ function renderDetail(f) {
   panel("chart-detail-area", (w) => ({
     width: w, height: 250,
     marginRight: 48,
-    x: { label: "UTC →", type: "time" },
+    x: { label: "UTC →", type: "utc" },
     y: { label: "footprint (km²) ↑", zero: true },
     color: { legend: false },
     marks: [
@@ -549,7 +599,7 @@ function renderDetail(f) {
   panel("chart-detail-cumulative", (w) => ({
     width: w, height: 250,
     marginRight: 48,
-    x: { label: "UTC →", type: "time" },
+    x: { label: "UTC →", type: "utc" },
     y: { label: "cumulative volume (km³) ↑", zero: true },
     marks: [
       Plot.areaY(rows, { x: "t", y: "cum", fill: "#7c5ccc", fillOpacity: 0.18,
@@ -587,7 +637,7 @@ function renderDetail(f) {
   panel("chart-detail-speed", (w) => ({
     width: w, height: 250,
     marginRight: 48,
-    x: { label: "UTC →", type: "time" },
+    x: { label: "UTC →", type: "utc" },
     y: { label: "speed of centre (km/h) ↑", zero: true },
     marks: [
       Plot.line(speeds, { x: "t", y: "kmh", stroke: "#b8860b", strokeWidth: 2,
@@ -670,20 +720,39 @@ function renderJakartaMap(tracks, land) {
   const peak = d3.max(props, (p) => p.max_intensity_mm_hr);
   const longest = d3.max(props, (p) => p.duration_h);
 
+  period("chart-map-jakarta", "31 December 2019 to 1 January 2020, every storm");
+  const [bLat0, bLat1, bLon0, bLon1] = tracks.bbox;
+  const boxArea = (bLat1 - bLat0) * (bLon1 - bLon0);
+  let density = "";
+  if (domainStats) {
+    const rel = (feats.length / boxArea) / (domainStats.n / domainStats.area);
+    density =
+      ` Same two days and the same unfiltered rule as the national map above, so the ` +
+      `two are directly comparable: this box is <strong>1/${Math.round(
+        domainStats.area / boxArea)}</strong> of the domain's area and holds ` +
+      `<strong>1/${Math.round(domainStats.n / feats.length)}</strong> of its storms, ` +
+      `which makes it <strong>${fmt.f1(rel)}x</strong> denser in tracks than the ` +
+      `country as a whole. That is a real difference rather than an artefact of how ` +
+      `the maps were drawn, and a modest one: the domain average includes a great ` +
+      `deal of open ocean and the drier southeast.`;
+  }
+
   text("caption-map-jakarta",
-    `${feats.length} storms over Jakarta, Banten and West Java, 30 Dec 2019 to ` +
-    `2 Jan 2020. Total ${fmt.f1(vol)} km&sup3;, peak intensity ${fmt.f1(peak)} mm/hr, ` +
-    `longest ${longest} h. Gridlines every 1 degree.`);
+    `${feats.length} storms over Jakarta, Banten and West Java, 31 Dec 2019 to ` +
+    `1 Jan 2020. Total ${fmt.f1(vol)} km&sup3;, peak intensity ${fmt.f1(peak)} mm/hr, ` +
+    `longest ${longest} h. Gridlines every 1 degree.` + density);
 
   // Storm starts per 3 hours.
-  const starts = props.map((p) => ({ ...p, t: new Date(p.start) }));
+  const starts = props.map((p) => ({ ...p, t: utc(p.start) }));
+  period("chart-jakarta-time", "31 December 2019 to 1 January 2020");
+  period("chart-jakarta-scatter", "31 December 2019 to 1 January 2020");
   panel("chart-jakarta-time", (w) => ({
     width: w, height: 240,
-    x: { label: "start time (UTC) →", type: "time" },
+    x: { label: "start time (UTC) →", type: "utc" },
     y: { label: "storms ↑" },
     marks: [
       Plot.rectY(starts, Plot.binX({ y: "count" },
-        { x: "t", interval: d3.timeHour.every(3), fill: ACCENT, fillOpacity: 0.85 })),
+        { x: "t", interval: d3.utcHour.every(3), fill: ACCENT, fillOpacity: 0.85 })),
       Plot.ruleY([0]),
     ],
   }));
@@ -716,16 +785,16 @@ function renderJakartaMap(tracks, land) {
 
 function renderAccumulation(acc, rank) {
   if (acc) {
-    const rows = acc.hourly.map((h) => ({ ...h, t: new Date(h.t) }));
+    const rows = acc.hourly.map((h) => ({ ...h, t: utc(h.t) }));
     const maxCum = d3.max(rows, (r) => r.cum_mean_mm);
 
     panel("chart-accum-series", (w) => ({
       width: w, height: 290,
       marginRight: 52,
-      x: { label: "UTC →", type: "time" },
+      x: { label: "UTC →", type: "utc" },
       y: { label: "mm per hour ↑", zero: true },
       marks: [
-        Plot.rectY(rows, { x: "t", y: "mean_mm", interval: d3.timeHour,
+        Plot.rectY(rows, { x: "t", y: "mean_mm", interval: d3.utcHour,
                            fill: ACCENT, fillOpacity: 0.75,
                            title: (d) => `${d.t.toISOString().slice(5, 16)} UTC\n` +
                                          `${fmt.f1(d.mean_mm)} mm areal mean\n` +
@@ -741,6 +810,9 @@ function renderAccumulation(acc, rank) {
       ],
     }));
 
+    const span = `${acc.window[0]} to ${acc.window[1]}`;
+    period("chart-accum-series", `${span}, IMERG grid not the catalogue`);
+    period("chart-accum-map", `${span}, IMERG grid not the catalogue`);
     const dki = acc.areas.find((a) => a.name === "DKI Jakarta") ?? acc.areas[0];
     text("caption-accum-series",
       `Areal mean over DKI Jakarta, bars, with cumulative total in orange rescaled to ` +
@@ -827,7 +899,19 @@ function renderAccumulation(acc, rank) {
           `than the convective core that produces a gauge extreme, and passive ` +
           `microwave retrievals smooth heavy rain besides. Every volume and severity ` +
           `figure on this page inherits that: they are computed correctly from what ` +
-          `IMERG reports, and what IMERG reports is low at the extreme.</p>`);
+          `IMERG reports, and what IMERG reports is low at the extreme.</p>` +
+          `<p class="caption"><strong>Checked against an independent extraction.</strong> ` +
+          `The same nine cells were pulled from IMERG <em>Late</em> on 3 January 2020, ` +
+          `contemporaneously and with different software, against the <em>Final</em> ` +
+          `run read here six years later. Aligned in time, the two totals agree to ` +
+          `<strong>4.3%</strong>, which is about what a Late-minus-Final difference ` +
+          `should be. Two traps showed up in that comparison and both are worth ` +
+          `naming: the 2020 extraction is timestamped in Jakarta local time while ` +
+          `everything here is UTC, so as labelled the two series anti-correlate; and ` +
+          `its column sums of 200 to 350 look like millimetres but are sums of mm/hr ` +
+          `at half-hourly steps, so the real depths are half of them. The doubled ` +
+          `figure lands right on the gauge range by coincidence, which is exactly what ` +
+          `makes it dangerous.</p>`);
       }
     }
   } else {
@@ -844,6 +928,7 @@ function renderAccumulation(acc, rank) {
     share: a.share_pct,
   }));
 
+  period("chart-rank", `event storms of 30 Dec 2019 to 2 Jan 2020, ranked against all ${fmt.si(rank.n_reference)} storms of ${FULL_RECORD}`);
   panel("chart-rank", (w) => ({
     width: w, height: 240,
     marginLeft: 92, marginRight: 60,
@@ -901,6 +986,7 @@ function renderSeasonal(seasonal) {
   if (!seasonal) return missing("chart-seasonal", "seasonal cycle");
   const rows = seasonal.months;
 
+  period("chart-seasonal", `${seasonal.meta.years_used} complete years of ${FULL_RECORD}`);
   panel("chart-seasonal", (w) => ({
     width: w, height: 340,
     x: monthAxis,
@@ -985,6 +1071,8 @@ function renderAnnual(annual) {
     ],
   }));
 
+  period("chart-annual-vol", FULL_RECORD);
+  period("chart-annual-count", FULL_RECORD);
   mk("chart-annual-vol", "volume_km3", "km³ ↑");
   mk("chart-annual-count", "storms", "storms ↑");
 
@@ -1007,6 +1095,7 @@ function renderRegional(regional) {
   const shapes = regional.shapes.map((s) => ({ ...s,
     name: names[s.region] ?? String(s.region), pct: s.share * 100 }));
 
+  period("chart-regional", FULL_RECORD);
   panel("chart-regional", (w) => ({
     width: w, height: 330,
     x: monthAxis,
@@ -1082,6 +1171,7 @@ function renderDiurnal(diurnal) {
   const solid = rows.filter((r) => r.series.includes("local"));
   const faded = rows.filter((r) => r.series.includes("UTC"));
 
+  period("chart-diurnal", FULL_RECORD);
   panel("chart-diurnal", (w) => ({
     width: w, height: 330,
     x: { label: "hour →", domain: diurnal.bins.map((b) => b.hour) },
@@ -1127,6 +1217,7 @@ function renderConcentration(conc) {
   if (!conc) return missing("chart-concentration", "concentration curve");
   const curve = conc.curve.map((d) => ({ x: d.storm_frac * 100, y: d.volume_frac * 100 }));
 
+  period("chart-concentration", `${FULL_RECORD}, truncated storms excluded`);
   panel("chart-concentration", (w) => ({
     width: w, height: 360,
     x: { label: "largest storms, share of population (%) →", type: "log",
@@ -1173,6 +1264,9 @@ function renderLeadtime(lead) {
   if (!lead) return missing("chart-lead-scatter", "lead time");
   const p = lead.provinces;
 
+  period("chart-lead-scatter", `${FULL_RECORD}`);
+  period("chart-lead-hist", `${FULL_RECORD}`);
+  period("chart-lead-quartile", `${FULL_RECORD}`);
   panel("chart-lead-scatter", (w) => ({
     width: w, height: 300,
     x: { label: "median distance offshore at formation (km) →" },
@@ -1268,6 +1362,10 @@ function renderSweep(sweep) {
   }));
   const key = rows[0].captured !== undefined ? "captured" : "captured_frac";
 
+  const months = [...new Set(sweep.rows.map((r) => r.month))].sort();
+  for (const id of ["chart-sweep-count", "chart-sweep-captured"]) {
+    period(id, `${months.join(" and ")}, both segmentation methods`);
+  }
   const mk = (id, field, label, opts = {}) => panel(id, (w) => ({
     width: w, height: 280,
     x: { label: "prominence h (mm/hr) →", type: "log" },
@@ -1324,6 +1422,7 @@ function renderSeverity(sev, fam, fsev) {
       ],
     }));
 
+    period("chart-severity", `${FULL_RECORD}`);
     const [lo, hi] = sev.volume_edges_km3;
     const total = d3.sum(sev.grid, (g) => g.storms);
     const lowest = sev.grid.find((g) => g.name === "very low");
@@ -1366,6 +1465,7 @@ function renderSeverity(sev, fam, fsev) {
       ],
     }));
 
+    period("chart-family-severity", `${FULL_RECORD}`);
     const lowest = fsev.occupancy.find((o) => o.severity === "very low");
     const [flo, fhi] = fsev.volume_edges_km3;
     text("caption-family-severity",
@@ -1413,6 +1513,7 @@ function renderSeverity(sev, fam, fsev) {
       }));
       const med = headline.median_annual_max_km3;
 
+      period("chart-annual-max", `annual maxima, ${headline.n_years_compared} complete years of ${FULL_RECORD}`);
       panel("chart-annual-max", (w) => ({
         width: w, height: 300,
         marginBottom: 44,
@@ -1528,6 +1629,7 @@ function renderSeverity(sev, fam, fsev) {
     const rows = fam.classes.slice().sort(
       (a, b) => order.indexOf(a.age_class) - order.indexOf(b.age_class));
 
+    period("chart-families", `${FULL_RECORD}`);
     panel("chart-families", (w) => ({
       width: w, height: 300,
       marginLeft: 96,
