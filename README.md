@@ -344,7 +344,7 @@ same `h`, not just different counts. *(Finding 28)*
 
 The project rule is: **measure it or cite it, never assert from memory.**
 
-- [docs/findings.md](docs/findings.md) - 62 numbered findings, each with the command
+- [docs/findings.md](docs/findings.md) - 64 numbered findings, each with the command
   that produced it
 - [docs/runbook.md](docs/runbook.md) - every command, and the traps
 - [docs/sweep-prominence.md](docs/sweep-prominence.md) - the `h` parameter study
