@@ -165,7 +165,10 @@ venv.bak/
 .ropeproject
 
 # mkdocs documentation
-/site
+# NOTE: the stock Python template ignores /site here. This project does not use
+# mkdocs, and /site is the published dashboard that GitHub Pages deploys, so the
+# rule is removed rather than commented out of habit. Ignoring it would have left
+# Pages deploying an empty directory with no error anywhere.
 
 # mypy
 .mypy_cache/
