@@ -445,12 +445,19 @@ function renderDomainMap(tracks, land) {
   const m = tracks.meta;
   const vol = d3.sum(feats, (f) => f.properties.volume_km3);
   text("caption-map-domain",
-    `The ${m.n_written} largest storms by volume alive between 30 Dec 2019 and ` +
-    `2 Jan 2020, carrying ${Math.round(vol)} km&sup3; between them. Hover any track ` +
-    `for its numbers. Gridlines every 5 degrees. <strong>These four days were not an ` +
-    `exceptional period nationally</strong>: December 2019 ranks 182nd and January ` +
-    `2020 174th of the 333 months in the record by total rainfall. The flood was a ` +
-    `local event, and the map shows why that is not a contradiction.`);
+    `The <strong>${m.n_written} largest storms by volume</strong> anywhere in the ` +
+    `domain between 30 Dec 2019 and 2 Jan 2020, carrying ${Math.round(vol)} km&sup3; ` +
+    `between them. Hover any track for its numbers. Gridlines every 5 degrees. ` +
+    `<br><br>This map and the Jakarta map below are cut from the <strong>same ` +
+    `segmentation of the same four days</strong>, so a storm on one is the same ` +
+    `object on the other. They still look different, and should: this one keeps only ` +
+    `the largest ${m.n_written} storms nationally, and just 15 of the 134 storms over ` +
+    `Jakarta are big enough to make that cut. Storms near the capital were not among ` +
+    `the country's largest that week. ` +
+    `<br><br><strong>Nor were these four days exceptional nationally</strong>: ` +
+    `December 2019 ranks 182nd and January 2020 174th of the 333 months in the record ` +
+    `by total rainfall. The flood was a local event, and the map shows why that is not ` +
+    `a contradiction.`);
 }
 
 function renderDetail(f) {
@@ -536,6 +543,65 @@ function renderDetail(f) {
     ],
   }));
 
+  // Cumulative volume: how the storm's total actually accrued. A storm that delivers
+  // most of its water in two hours and a storm that drizzles for a day can share a
+  // total, and the shape of this curve is the difference.
+  panel("chart-detail-cumulative", (w) => ({
+    width: w, height: 250,
+    marginRight: 48,
+    x: { label: "UTC →", type: "time" },
+    y: { label: "cumulative volume (km³) ↑", zero: true },
+    marks: [
+      Plot.areaY(rows, { x: "t", y: "cum", fill: "#7c5ccc", fillOpacity: 0.18,
+                         curve: "monotone-x" }),
+      Plot.line(rows, { x: "t", y: "cum", stroke: "#7c5ccc", strokeWidth: 2,
+                        curve: "monotone-x" }),
+      Plot.dot(rows, { x: "t", y: "cum", fill: "#7c5ccc", r: 2.5,
+                       title: (d) => `${d.t.toISOString().slice(11, 16)} UTC\n` +
+                                     `${fmt.f3(d.cum)} km3 so far\n` +
+                                     `${fmt.pct1(d.cum / cum * 100)}% of the total`,
+                       tip: true }),
+      Plot.ruleY([0]),
+    ],
+  }));
+
+  // Speed of the storm's centre between consecutive steps. Great-circle distance on
+  // a sphere, not a flat-earth shortcut: a degree of longitude is shorter than a
+  // degree of latitude everywhere off the equator.
+  const R_KM = 6371.0088;
+  const rad = (d) => d * Math.PI / 180;
+  const speeds = [];
+  for (let i = 1; i < rows.length; i++) {
+    const a = s.lat[i - 1], b = s.lat[i];
+    const dLat = rad(b - a);
+    const dLon = rad(s.lon[i] - s.lon[i - 1]);
+    const hav = Math.sin(dLat / 2) ** 2 +
+                Math.cos(rad(a)) * Math.cos(rad(b)) * Math.sin(dLon / 2) ** 2;
+    const km = 2 * R_KM * Math.asin(Math.min(1, Math.sqrt(hav)));
+    const hrs = (rows[i].t - rows[i - 1].t) / 3.6e6;
+    speeds.push({ t: rows[i].t, kmh: hrs > 0 ? km / hrs : 0, km });
+  }
+  const totalKm = d3.sum(speeds, (d) => d.km);
+  const medSpeed = speeds.length ? d3.median(speeds, (d) => d.kmh) : 0;
+
+  panel("chart-detail-speed", (w) => ({
+    width: w, height: 250,
+    marginRight: 48,
+    x: { label: "UTC →", type: "time" },
+    y: { label: "speed of centre (km/h) ↑", zero: true },
+    marks: [
+      Plot.line(speeds, { x: "t", y: "kmh", stroke: "#b8860b", strokeWidth: 2,
+                          curve: "monotone-x" }),
+      Plot.dot(speeds, { x: "t", y: "kmh", fill: "#b8860b", r: 2.5,
+                         title: (d) => `${d.t.toISOString().slice(11, 16)} UTC\n` +
+                                       `${fmt.f1(d.kmh)} km/h\n` +
+                                       `${fmt.f1(d.km)} km this step`,
+                         tip: true }),
+      Plot.ruleY([medSpeed], { stroke: INK, strokeDasharray: "4,3" }),
+      Plot.ruleY([0]),
+    ],
+  }));
+
   const peakRow = d3.greatest(rows, (r) => r.peak);
   const bigRow = d3.greatest(rows, (r) => r.area);
   // Mean depth over the storm's own largest footprint. Volume in km3 over area in
@@ -555,11 +621,20 @@ function renderDetail(f) {
     `<div><dt>${k}</dt><dd>${v}<small>${note}</small></dd></div>`).join("");
 
   text("detail-caption",
-    `Left: how fast the storm was delivering water, as a rate so the axis does not ` +
-    `depend on the half-hourly step. Right: its footprint in solid blue, with peak ` +
-    `intensity in dashed orange rescaled onto the same frame for shape comparison ` +
-    `only, peaking at ${fmt.f1(d3.max(rows, (r) => r.peak))} mm/hr. A storm that ` +
-    `spreads while weakening shows the two lines diverging.`);
+    `<strong>Delivery rate</strong>, as a rate so the axis does not depend on the ` +
+    `half-hourly step. <strong>Footprint</strong> in solid blue, with peak intensity ` +
+    `in dashed orange rescaled onto the same frame for shape comparison only, peaking ` +
+    `at ${fmt.f1(d3.max(rows, (r) => r.peak))} mm/hr; a storm that spreads while ` +
+    `weakening shows the two diverging. <strong>Cumulative volume</strong>, whose ` +
+    `steepness is where the water actually arrived. <strong>Speed of the centre</strong>, ` +
+    `great-circle between consecutive half-hourly positions, median ` +
+    `${fmt.f1(medSpeed)} km/h over ${fmt.f0(totalKm)} km travelled; the dashed line is ` +
+    `that median. <em>Read the spikes with care.</em> This follows the ` +
+    `volume-weighted centre, not a physical parcel, so when a new cell inside the same ` +
+    `object lights up far from the old core the centre jumps and the arithmetic ` +
+    `reports a speed no storm reaches. The median is the trustworthy statistic, and at ` +
+    `${fmt.f1(medSpeed)} km/h it sits near the 9 km/h implied independently by how ` +
+    `long sea-formed storms take to reach the coast.`);
   document.getElementById("panel-detail")
     .scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
@@ -709,6 +784,9 @@ function renderAccumulation(acc, rank) {
 
     const tbl = document.getElementById("table-accum");
     if (tbl) {
+      // Local calendar days, which is the form a gauge reports and the only one
+      // directly comparable with the published figures for 1 January 2020.
+      const dl = (acc.daily_local ?? []).filter((r) => r.area === "DKI Jakarta");
       tbl.innerHTML =
         `<thead><tr><th>Area</th><th>Cells</th><th>Mean, 4 days</th>
            <th>Wettest cell, 4 days</th><th>Peak 24 h, wettest cell</th></tr></thead>
@@ -720,6 +798,37 @@ function renderAccumulation(acc, rank) {
            <td class="num">${fmt.f1(a.max_cell_mm)} mm</td>
            <td class="num"><strong>${fmt.f1(a.peak_24h_max_cell_mm)} mm</strong></td>
          </tr>`).join("") + `</tbody>`;
+
+      if (dl.length) {
+        const g = acc.gauge_reference;
+        const jan1 = dl.find((r) => r.local_date === "2020-01-01");
+        tbl.insertAdjacentHTML("afterend",
+          `<table class="data" style="margin-top:18px">
+             <thead><tr><th>DKI Jakarta, local calendar day</th>
+               <th>Areal mean</th><th>Wettest cell</th></tr></thead><tbody>` +
+          dl.map((r) => `<tr${r.local_date === "2020-01-01" ? ' class="chosen"' : ""}>
+             <td>${r.local_date}</td>
+             <td class="num">${fmt.f1(r.mean_mm)} mm</td>
+             <td class="num">${fmt.f1(r.max_cell_mm)} mm</td>
+           </tr>`).join("") +
+          `<tr><td><strong>Jakarta rain gauges, 1 Jan 2020</strong></td>
+             <td class="num">n/a</td>
+             <td class="num"><strong>${g.reported_range_mm[0]} to ` +
+          `${g.reported_range_mm[1]} mm</strong></td></tr></tbody></table>` +
+          `<p class="caption"><strong>This is the gap.</strong> On the day itself, ` +
+          `IMERG's wettest 11 km cell over Jakarta reads ` +
+          `<strong>${fmt.f1(jan1 ? jan1.max_cell_mm : 0)} mm</strong>. Gauges in the ` +
+          `city recorded ${g.reported_range_mm[0]} to ${g.reported_range_mm[1]} mm, ` +
+          `the highest daily total since records began in 1866. Searching a wider box ` +
+          `and any rolling 24 hours, the most the satellite finds anywhere near the ` +
+          `capital is <strong>${fmt.f1(acc.best_24h_near_jakarta_mm)} mm</strong>. ` +
+          `So the satellite sees roughly <strong>half</strong> the rain that fell at ` +
+          `the worst gauges. A cell 11 km across averages over an area far larger ` +
+          `than the convective core that produces a gauge extreme, and passive ` +
+          `microwave retrievals smooth heavy rain besides. Every volume and severity ` +
+          `figure on this page inherits that: they are computed correctly from what ` +
+          `IMERG reports, and what IMERG reports is low at the extreme.</p>`);
+      }
     }
   } else {
     missing("chart-accum-series", "accumulation");
