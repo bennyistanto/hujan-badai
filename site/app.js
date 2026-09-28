@@ -1422,12 +1422,17 @@ function renderSeverity(sev, fam, fsev) {
     panel("chart-families", (w) => ({
       width: w, height: 300,
       marginLeft: 96,
-      marginRight: 64,   // room for the count label beyond the longest bar
-      x: { label: "families (log scale) →", type: "log" },
+      marginRight: 74,   // room for the count label beyond the longest bar
+      x: { label: "families (log scale) →", type: "log",
+           domain: [1, d3.max(rows, (r) => r.families) * 1.6] },
       y: { label: null, domain: rows.map((r) => r.age_class) },
       grid: true,
       marks: [
-        Plot.barX(rows, { x: "families", y: "age_class", fill: ACCENT,
+        // x1 is set explicitly to 1, not left to default to 0. A bar defaults to
+        // spanning from zero, and zero on a log scale is negative infinity, so every
+        // bar came out degenerate and the chart rendered as axes with no bars at all.
+        // One family is the natural floor for a count, so the bars start there.
+        Plot.barX(rows, { x1: 1, x2: "families", y: "age_class", fill: ACCENT,
                           fillOpacity: 0.85,
                           title: (d) => `${d.age_class}\n${fmt.int(d.families)} families` +
                                         `\n${fmt.f1(d.volume_share_pct)}% of volume`,
@@ -1445,7 +1450,9 @@ function renderSeverity(sev, fam, fsev) {
       `not live for days: asking for a storm's age in days returns almost nothing. ` +
       `Age belongs to <strong>families</strong> instead, storms linked within 3 hours ` +
       `and 50 km. Of ${fmt.int(fam.n_families)} families, only ${fmt.int(nMulti)} ` +
-      `survive past a day. Note the log axis. The linking rule has to be strict: ` +
+      `survive past a day. Note the log axis, which starts at one family: the classes ` +
+      `span four orders of magnitude and a linear axis would leave three of the four ` +
+      `bars invisible. The linking rule has to be strict: ` +
       `linking by bounding-box overlap percolates exactly as the original segmentation ` +
       `did, and swallows the whole domain.`);
   } else {
