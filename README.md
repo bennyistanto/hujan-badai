@@ -4,7 +4,7 @@ Object-based storm detection and tracking over Indonesia, from GPM IMERG half-ho
 precipitation. Each storm is a connected object in space **and** time, so it has a
 birth, a track, a life and a death rather than being a set of unrelated rainy pixels.
 
-The catalogue covers **1998-2025**, **27.75 years**, **13,386,185 storms**, **618,505 km3** of rainfall, one Parquet file per year.
+The catalogue covers **1998-2025**, **27.75** years, **13,386,185** storms, **618,505** km3 of rainfall, one Parquet file per year.
 
 ---
 
