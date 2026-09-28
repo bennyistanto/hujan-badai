@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hujan-badai - storm catalogue of Indonesia</title>
+<meta name="description" content="Object-based storm detection and tracking over Indonesia from GPM IMERG half-hourly precipitation. 13.4 million storms, 1998 to 2025.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="kicker">GPM IMERG Final V07 &middot; 1998 to 2025</p>
+    <h1>hujan&#8209;badai</h1>
+    <p class="lede">
+      Every storm over Indonesia for 28 years, as an object with a birth, a track, a
+      life and a death. Not rainy pixels: <strong>13.4 million individual storms</strong>,
+      each with a volume, a duration, a peak intensity and a path.
+    </p>
+    <p class="lede source-note">
+      The approach follows the spatiotemporal object-based rainfall analysis of
+      <a href="https://doi.org/10.3390/rs12213538">Laverde&#8209;Barajas et al.
+      (2019, 2020)</a>, who treated a storm as one contiguous object in space and time
+      rather than as a field, and built a catalogue of monsoon rainstorms for the Lower
+      Mekong on that basis. This work applies the same idea to a domain about fourteen
+      times larger and a record about five times longer, which required a different
+      way of cutting the rainfall field into objects. Section 1 is that difference.
+    </p>
+    <dl class="stats" id="stats"></dl>
+    <p class="provenance" id="provenance"></p>
+  </div>
+</header>
+
+<section class="definition wrap-inner" id="sec-definition">
+  <h2>What counts as one storm</h2>
+  <p>
+    Worth fixing before any number below means anything, because
+    <strong id="def-rate">roughly 480,000 storms a year</strong> is a statement about
+    this definition as much as about the weather.
+  </p>
+  <ol class="steps">
+    <li>
+      <strong>Wet.</strong> A grid cell at one half&#8209;hourly step counts as raining
+      when IMERG reports at least <strong>1.0 mm/hr</strong>. The data is an intensity,
+      so over a 30&#8209;minute step that is <strong>0.5 mm of depth</strong>. Cells at
+      0.1 degrees, about 11 km.
+    </li>
+    <li>
+      <strong>Connected.</strong> Wet cells touching each other in latitude, longitude
+      <em>or time</em> belong to the same object: 26&#8209;neighbour connectivity in a
+      three&#8209;dimensional cube. This is what gives a storm a duration and a track
+      rather than a series of unrelated snapshots.
+    </li>
+    <li>
+      <strong>Split.</strong> Connectivity alone is not enough here, because rain over
+      the maritime continent is close to continuous and everything joins into one
+      object. Each local intensity maximum starts its own storm, and it survives as a
+      separate storm only if its peak stands at least
+      <strong><code>h</code> = 4.0 mm/hr</strong> above the lowest saddle joining it to
+      a bigger peak. That prominence is the single scale parameter. Section 11 is its
+      sensitivity.
+    </li>
+    <li>
+      <strong>Big enough.</strong> An object must span at least <strong>6</strong>
+      cell&#8209;timesteps to be kept, which removes single&#8209;pixel speckle.
+    </li>
+  </ol>
+  <p class="caption">
+    So a storm here is a convective system of a few hours, not a monsoon surge lasting
+    days: the median lasts about 4 hours. Longer&#8209;lived weather appears in section
+    12 as a <em>family</em> of linked storms. Change <code>h</code> and the count
+    changes a great deal; the total rainfall barely moves at all.
+  </p>
+</section>
+
+<main class="wrap">
+
+<section id="sec-method">
+  <h2>1. Why the objects are cut differently here</h2>
+  <p>
+    Connected-component labelling, the step that turns a rainfall field into objects in
+    the source method, is well matched to a catchment. The Lower Mekong work applied it
+    over about 150,000&nbsp;km&sup2; for a monsoon season and produced a clean
+    population of around 1,700 storms.
+  </p>
+  <p>
+    Indonesia is a different regime. Convection here is close to continuous across
+    5,200&nbsp;km of ocean and islands, so at the same 1&nbsp;mm/h threshold the wet
+    cells form one connected mass: a single object holds <strong>90% of all wet
+    voxels</strong> across the whole domain and the whole window. That object is not a
+    storm, it is the intertropical convergence zone. Sub-dividing the domain does not
+    help; at 5x5 degrees the largest object still holds 70%.
+  </p>
+  <p>
+    This is a property of the domain, not a defect in the published work. It does mean
+    the object-cutting step had to be replaced before anything downstream could be
+    trusted, and the rest of this section is what replaced it.
+  </p>
+  <div class="panel">
+    <div class="chart" id="chart-method"></div>
+    <p class="caption" id="caption-method"></p>
+  </div>
+  <p class="callout" id="callout-percolation"></p>
+</section>
+
+<section id="sec-domain">
+  <h2>2. Four days over the whole country</h2>
+  <p id="intro-domain">
+    30 December 2019 to 2 January 2020, the days Jakarta flooded, across the full area
+    of interest. Each line is the track of one storm's volume&#8209;weighted centre.
+    The same days are shown close up in section 3, so the two can be read together.
+  </p>
+  <div class="panel wide">
+    <div class="mapbar">
+      <span class="mapbar-label">Colour by</span>
+      <div class="segmented" id="colourby-domain"></div>
+    </div>
+    <div class="chart" id="chart-map-domain"></div>
+    <p class="caption" id="caption-map-domain"></p>
+    <details class="howto">
+      <summary>How each of these is measured</summary>
+      <dl class="defs" id="defs-domain"></dl>
+    </details>
+  </div>
+</section>
+
+<section id="sec-jakarta">
+  <h2>3. Jakarta, 30 December 2019 to 2 January 2020</h2>
+  <p>
+    The New Year flood that put much of the capital under water and killed at least 60
+    people. Every storm whose track starts or ends over Jakarta, Banten or West Java
+    during those four days, uncapped.
+    <strong>Click any track</strong> to see what that storm was doing hour by hour.
+  </p>
+  <div class="panel wide">
+    <div class="mapbar">
+      <span class="mapbar-label">Colour by</span>
+      <div class="segmented" id="colourby-jakarta"></div>
+      <button class="clear-sel" id="clear-selection" hidden>Clear selection</button>
+    </div>
+    <div class="chart" id="chart-map-jakarta"></div>
+    <p class="caption" id="caption-map-jakarta"></p>
+  </div>
+
+  <div class="panel" id="panel-detail">
+    <h3 id="detail-title">Life cycle of one storm</h3>
+    <p class="caption" id="detail-hint">
+      No storm selected. Click a track on the map above, and its half&#8209;hourly
+      history appears here: how much rain it was delivering, how large it was, and how
+      hard it was raining at its core.
+    </p>
+    <div class="grid-2" id="detail-charts" hidden>
+      <div>
+        <div class="chart" id="chart-detail-rate"></div>
+      </div>
+      <div>
+        <div class="chart" id="chart-detail-area"></div>
+      </div>
+    </div>
+    <p class="caption" id="detail-caption"></p>
+    <dl class="stats compact" id="detail-stats" hidden></dl>
+  </div>
+
+  <div class="grid-2">
+    <div class="panel">
+      <h3>Storms per 3 hours</h3>
+      <div class="chart" id="chart-jakarta-time"></div>
+      <p class="caption">Storm starts, binned. Times are UTC; local is UTC+7.</p>
+    </div>
+    <div class="panel">
+      <h3>Volume against peak intensity</h3>
+      <div class="chart" id="chart-jakarta-scatter"></div>
+      <p class="caption" id="caption-jakarta-scatter"></p>
+    </div>
+  </div>
+</section>
+
+<section id="sec-accum">
+  <h2>4. What the storm objects do not capture</h2>
+  <p>
+    A flood answers to accumulated depth over a catchment, and no single storm object
+    represents that. The panel below reads the IMERG grid directly rather than the
+    catalogue: the same four days, as millimetres on the ground.
+  </p>
+  <div class="grid-2">
+    <div class="panel">
+      <h3>Rain over Jakarta, hour by hour</h3>
+      <div class="chart" id="chart-accum-series"></div>
+      <p class="caption" id="caption-accum-series"></p>
+    </div>
+    <div class="panel">
+      <h3>Total over the four days</h3>
+      <div class="chart" id="chart-accum-map"></div>
+      <p class="caption" id="caption-accum-map"></p>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="table-scroll">
+      <table class="data" id="table-accum"></table>
+    </div>
+  </div>
+  <p class="callout warn" id="callout-jakarta"></p>
+  <div class="panel">
+    <h3>Where these storms sit in 28 years</h3>
+    <div class="chart" id="chart-rank"></div>
+    <p class="caption" id="caption-rank"></p>
+  </div>
+</section>
+
+<section id="sec-seasonal">
+  <h2>5. The seasonal cycle</h2>
+  <p>
+    Share of the year's rainfall falling in each calendar month, over the full record.
+    The band is the 10th to 90th percentile across individual years, which is wide: a
+    single year cannot rank the months.
+  </p>
+  <div class="panel">
+    <div class="chart" id="chart-seasonal"></div>
+    <p class="caption" id="caption-seasonal"></p>
+  </div>
+  <p class="callout" id="callout-seasonal"></p>
+</section>
+
+<section id="sec-annual">
+  <h2>6. Year to year</h2>
+  <div class="grid-2">
+    <div class="panel">
+      <h3>Rainfall volume</h3>
+      <div class="chart" id="chart-annual-vol"></div>
+    </div>
+    <div class="panel">
+      <h3>Storm count</h3>
+      <div class="chart" id="chart-annual-count"></div>
+    </div>
+  </div>
+  <p class="caption" id="caption-annual"></p>
+</section>
+
+<section id="sec-regional">
+  <h2>7. The domain average hides the strongest signal</h2>
+  <p>
+    Three regions, derived from the catalogue's own seasonality rather than drawn by
+    hand. Each line is a region's rainfall shape through the year.
+  </p>
+  <div class="panel">
+    <div class="chart" id="chart-regional"></div>
+    <p class="caption" id="caption-regional"></p>
+  </div>
+  <div class="panel">
+    <div class="table-scroll">
+      <table class="data" id="table-regional"></table>
+    </div>
+  </div>
+</section>
+
+<section id="sec-diurnal">
+  <h2>8. The day and night cycle, which nobody asked the method to find</h2>
+  <p>
+    Where storms are born, by hour. Land and sea separate cleanly and in opposite phase.
+    This was never a target of the method, which makes it the strongest available
+    evidence that the objects are physically real rather than artefacts of the
+    segmentation.
+  </p>
+  <div class="panel">
+    <div class="chart" id="chart-diurnal"></div>
+    <p class="caption" id="caption-diurnal"></p>
+  </div>
+</section>
+
+<section id="sec-concentration">
+  <h2>9. A few storms carry most of the rain</h2>
+  <div class="panel">
+    <div class="chart" id="chart-concentration"></div>
+    <p class="caption" id="caption-concentration"></p>
+  </div>
+  <p class="callout" id="callout-concentration"></p>
+</section>
+
+<section id="sec-leadtime">
+  <h2>10. Warning time comes from coastal geometry, not climate</h2>
+  <p>
+    A storm that forms at sea and then makes landfall has spent time over water where it
+    could in principle have been watched. How much time depends on how far offshore
+    storms form, which is a property of the coast, not of the climate region.
+  </p>
+  <div class="grid-2">
+    <div class="panel">
+      <h3>Offshore distance against lead time</h3>
+      <div class="chart" id="chart-lead-scatter"></div>
+      <p class="caption" id="caption-lead-scatter"></p>
+    </div>
+    <div class="panel">
+      <h3>Hours at sea before landfall</h3>
+      <div class="chart" id="chart-lead-hist"></div>
+      <p class="caption" id="caption-lead-hist"></p>
+    </div>
+  </div>
+  <div class="panel">
+    <h3>Bigger storms give more warning</h3>
+    <div class="chart" id="chart-lead-quartile"></div>
+    <p class="caption" id="caption-lead-quartile"></p>
+  </div>
+</section>
+
+<section id="sec-sweep">
+  <h2>11. The one parameter, and its honest sensitivity</h2>
+  <p>
+    Segmentation takes a single scale parameter: the intensity prominence
+    <code>h</code>, in mm/hr, that a peak must clear to count as its own storm. There is
+    no optimum. <code>h</code> chooses the size of weather system counted, so it has to
+    be quoted with every number taken from the catalogue.
+  </p>
+  <div class="grid-2">
+    <div class="panel">
+      <h3>Storm count against h</h3>
+      <div class="chart" id="chart-sweep-count"></div>
+    </div>
+    <div class="panel">
+      <h3>Rain captured against h</h3>
+      <div class="chart" id="chart-sweep-captured"></div>
+    </div>
+  </div>
+  <p class="callout" id="callout-sweep"></p>
+</section>
+
+<section id="sec-severity">
+  <h2>12. Severity: ranking cells, and ranking events</h2>
+  <p>
+    Section 4 ended on a problem. A severity class built from individual convective
+    cells said nothing useful about a flood, because a cell is not the thing a flood
+    responds to. This section has both scales, so the difference is visible.
+  </p>
+  <div class="grid-2">
+    <div class="panel">
+      <h3>Per storm: one convective cell</h3>
+      <div class="chart" id="chart-severity"></div>
+      <p class="caption" id="caption-severity"></p>
+    </div>
+    <div class="panel">
+      <h3>Per family: one linked event</h3>
+      <div class="chart" id="chart-family-severity"></div>
+      <p class="caption" id="caption-family-severity"></p>
+    </div>
+  </div>
+
+  <p class="callout warn" id="callout-family"></p>
+
+  <h3 class="subhead">What does work: rank the rainfall, not the object</h3>
+  <p>
+    Neither object layer identifies this flood, so the object is the wrong thing to
+    rank. A flood responds to how much rain fell over a catchment in a window, which
+    is a quantity no single object carries. Ranked that way, against the annual
+    maximum for the same area and window length in each of the 27 complete years:
+  </p>
+  <div class="panel">
+    <div class="chart" id="chart-annual-max"></div>
+    <p class="caption" id="caption-annual-max"></p>
+  </div>
+  <div class="panel">
+    <h3>The answer depends on the area and the window</h3>
+    <div class="table-scroll">
+      <table class="data" id="table-area-rank"></table>
+    </div>
+    <p class="caption" id="caption-area-rank"></p>
+  </div>
+  <p class="callout" id="callout-area"></p>
+
+  <div class="panel">
+    <h3>Choosing the band rates by measurement</h3>
+    <div class="table-scroll">
+      <table class="data" id="table-bands"></table>
+    </div>
+    <p class="caption" id="caption-bands"></p>
+  </div>
+
+  <div class="panel">
+    <h3>The largest events in the record</h3>
+    <div class="table-scroll">
+      <table class="data" id="table-top-events"></table>
+    </div>
+    <p class="caption" id="caption-top-events"></p>
+  </div>
+
+  <div class="panel">
+    <h3>Storm families by age</h3>
+    <div class="chart" id="chart-families"></div>
+    <p class="caption" id="caption-families"></p>
+  </div>
+</section>
+
+<section id="sec-caveats">
+  <h2>What this is not</h2>
+  <ul class="caveats">
+    <li><strong>Not validated.</strong> No gauge or radar comparison has been made. This
+      is a catalogue, not a measurement of skill. Any statement of accuracy on this page
+      would be unsupported, and none is made.</li>
+    <li><strong>Not an impact product.</strong> Detecting rain over a place is not
+      evidence of flooding. Section 3 shows this directly: the storms over Jakarta during
+      a major flood are unremarkable on a domain-wide object scale.</li>
+    <li><strong>Not free of one arbitrary choice.</strong> <code>h</code>&nbsp;=&nbsp;4.0
+      is a declared scale, not an optimum, because no optimum exists.</li>
+    <li><strong>Not a reproduction of the source method.</strong> The segmentation is
+      different, and section 1 is why.</li>
+  </ul>
+</section>
+
+</main>
+
+<footer class="wrap">
+  <p>
+    Built from the numbers in the catalogue, not retyped: every panel reads a JSON file
+    written by <code>src/export_site.py</code>. Two figures in section 1 come from a
+    one&#8209;off diagnostic recorded in <code>docs/findings.md</code> and are labelled
+    where they appear.
+  </p>
+  <p class="links">
+    <a href="https://github.com/bennyistanto/hujan-badai">Repository</a>
+    <a href="https://github.com/bennyistanto/hujan-badai/blob/main/docs/findings.md">Findings</a>
+    <a href="https://github.com/bennyistanto/hujan-badai/blob/main/README.md">Method</a>
+    <a href="https://doi.org/10.3390/rs12213538">Source paper</a>
+  </p>
+  <p class="fineprint">
+    IMERG data courtesy of NASA/JAXA. Coastlines from Natural Earth, public domain.
+  </p>
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
