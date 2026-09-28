@@ -98,10 +98,19 @@ class SeverityScale:
             s += "  (record too short for return periods; percentile only)"
         else:
             s += f", honest to T<={self.max_honest_T:.0f} yr"
-        s += (f"\n  volume band edges    p{self.bands[0]:g}={self.vol_edges[0]:.4f} "
-              f"p{self.bands[1]:g}={self.vol_edges[1]:.4f} km3"
-              f"\n  intensity band edges p{self.bands[0]:g}={self.int_edges[0]:.1f} "
-              f"p{self.bands[1]:g}={self.int_edges[1]:.1f} mm/hr")
+        if self.band_kind == "per_year":
+            lo, hi = self.bands
+            s += (f"\n  bands by exceedance rate (T = 1/rate)"
+                  f"\n  volume     >={lo:g}/yr at {self.vol_edges[0]:.4f} km3, "
+                  f">={hi:g}/yr at {self.vol_edges[1]:.4f} km3"
+                  f"\n  intensity  >={lo:g}/yr at {self.int_edges[0]:.1f} mm/hr, "
+                  f">={hi:g}/yr at {self.int_edges[1]:.1f} mm/hr")
+        else:
+            s += (f"\n  bands by percentile"
+                  f"\n  volume     p{self.bands[0]:g}={self.vol_edges[0]:.4f}, "
+                  f"p{self.bands[1]:g}={self.vol_edges[1]:.4f} km3"
+                  f"\n  intensity  p{self.bands[0]:g}={self.int_edges[0]:.1f}, "
+                  f"p{self.bands[1]:g}={self.int_edges[1]:.1f} mm/hr")
         return s
 
     # -- lookups ----------------------------------------------------------

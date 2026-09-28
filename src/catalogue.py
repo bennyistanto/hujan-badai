@@ -14,6 +14,7 @@ Or from a notebook:
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import subprocess
 import sys
@@ -30,11 +31,19 @@ from storms import storm_table, track_wkt  # noqa: E402
 
 
 def _git_rev() -> str:
+    """Short HEAD, with "+dirty" when the tree has uncommitted changes.
+
+    Without the suffix a run against modified sources is indistinguishable from
+    one against a clean checkout at the same commit.
+    """
+    root = Path(__file__).resolve().parents[1]
     try:
-        return subprocess.run(["git", "rev-parse", "--short", "HEAD"],
-                              capture_output=True, text=True,
-                              cwd=Path(__file__).resolve().parents[1]
-                              ).stdout.strip() or "unknown"
+        rev = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                             capture_output=True, text=True, cwd=root
+                             ).stdout.strip() or "unknown"
+        dirty = subprocess.run(["git", "status", "--porcelain"],
+                               capture_output=True, text=True, cwd=root).stdout.strip()
+        return rev + ("+dirty" if dirty else "")
     except Exception:
         return "unknown"
 
@@ -70,11 +79,17 @@ def build(start, end, *, source=None, product=None, method="mergetree",
 
     params = {
         "method": method, "wet_threshold": wet_threshold,
-        "prominence": prominence if method == "watershed" else None,
+        # h applies to both mergetree and watershed. An earlier version recorded it
+        # only for "watershed", so every mergetree catalogue - which is every
+        # catalogue this project has built - saved prominence as null, losing the
+        # one parameter the docs insist must be quoted with each number.
+        "prominence": float(prominence) if method != "ccl" else None,
         "min_voxels": min_voxels,
         "source": source or SOURCE, "product": product or PRODUCT,
         "start": str(start), "end": str(end),
         "git_rev": _git_rev(),
+        "built_utc": dt.datetime.now(dt.timezone.utc).isoformat(
+            timespec="seconds"),
         "percolation_share": round(percolation_share(labels), 4),
     }
     df = storm_table(R, labels, da.time.values, da.lat.values, da.lon.values,
@@ -118,8 +133,14 @@ def save(df: pd.DataFrame, start, end, product=None, outdir=None) -> Path:
     p = outdir / f"storms_{product or PRODUCT}_{start}_{end}.parquet"
     out = df.drop(columns=["track"], errors="ignore")
     out.to_parquet(p, index=False)
+    # numpy scalars are not JSON-serialisable and were falling through to
+    # default=str, so min_voxels came out as the string "6".
+    def _plain(v):
+        if hasattr(v, "item"):
+            return v.item()
+        return v
     (p.with_suffix(".meta.json")).write_text(json.dumps(
-        {c[6:]: df[c].iloc[0] for c in df.columns if c.startswith("param_")},
+        {c[6:]: _plain(df[c].iloc[0]) for c in df.columns if c.startswith("param_")},
         indent=2, default=str), encoding="utf-8")
     return p
 
