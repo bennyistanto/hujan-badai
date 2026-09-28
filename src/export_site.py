@@ -875,7 +875,7 @@ def _step_series(R, labels, lat, nt):
 
 def export_event(start: str, end: str, bbox, h: float, product: str, sc,
                  pad_days: int = 1, name: str = "tracks_jakarta.json",
-                 places=None, label: str = "", domain_n: int = 400):
+                 places=None, label: str = "", domain_n: int = 0):
     """Re-segment one short window and export its storms with per-step detail.
 
     Deliberately NOT read from the year catalogues. Those carry only whole-storm
@@ -939,14 +939,22 @@ def export_event(start: str, end: str, bbox, h: float, product: str, sc,
     # ones: the domain map read the year catalogues while this window was re-segmented
     # for its per-step detail. Same days, different objects, and the two maps visibly
     # disagreed. One segmentation, two views, is the only way they can agree.
-    dom = df[in_window].nlargest(domain_n, "total_volume_km3")
+    # Uncapped by default. Capping this map to the largest N storms nationally while
+    # the detail map below showed everything made the small box look about 29x denser
+    # than the rest of the country: 119 of Jakarta's 134 storms fell below the cap,
+    # so the cap alone produced a pattern the data does not contain. Both maps now
+    # show every storm in the window.
+    dom = df[in_window].sort_values("total_volume_km3", ascending=False)
+    if domain_n:
+        dom = dom.head(domain_n)
     _write("tracks_domain.json", {
         "meta": _meta([f"IMERG {product} {start} to {end}"],
                       window=f"{start} to {end}", n_requested=domain_n,
                       n_written=int(len(dom)), prominence=h,
-                      note=("the largest storms by volume in this window, cut from "
-                            "the same segmentation as the detail map below it, so "
-                            "the same storm is the same object on both.")),
+                      note=("every storm alive in this window, cut from the same "
+                            "segmentation as the detail map below it, so the same "
+                            "storm is the same object on both and the two maps "
+                            "are directly comparable in density.")),
         "severity_edges": {"volume_km3": list(sc.vol_edges),
                            "intensity_mm_hr": list(sc.int_edges),
                            "bands": list(sc.bands), "basis": sc.basis},
@@ -974,7 +982,7 @@ def _event_features(df, v, a, pk, time, sc, with_series=True):
               if np.isfinite(la) and np.isfinite(lo)]
         if not tr:
             continue
-        pts = [[lo, la] for _, la, lo in tr]
+        pts = [[round(lo, 3), round(la, 3)] for _, la, lo in tr]
         steps = [t for t, _, _ in tr]
         lb = int(row.storm_id)
         cls = sc.classify([row.total_volume_km3], [row.max_intensity_mm_hr])
@@ -1139,12 +1147,25 @@ def main() -> None:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--product", default="final")
     ap.add_argument("--prominence", type=float, default=4.0)
+    # Two windows on purpose. The maps show the flood itself, which is also the
+    # 2-day window Finding 62 identifies as the record for Jabodetabek. The
+    # accumulation and ranking panels keep the wider span, because a catchment
+    # responds to the build-up as well as the peak and the point of that section is
+    # precisely that the window length changes the answer.
+    ap.add_argument("--map-start", default="2019-12-31",
+                    help="first day the two maps show")
+    ap.add_argument("--map-end", default="2020-01-01",
+                    help="last day the maps show, inclusive")
     ap.add_argument("--event-start", default="2019-12-30",
-                    help="first day of the window both maps show")
+                    help="first day of the wider window used for accumulation "
+                         "and event ranking")
     ap.add_argument("--event-end", default="2020-01-02",
                     help="last day, inclusive")
-    ap.add_argument("--tracks-n", type=int, default=400,
-                    help="cap on storms drawn on the domain map")
+    ap.add_argument("--tracks-n", type=int, default=0,
+                    help="cap on storms drawn on the domain map; 0 means no cap. "
+                         "Capping it while the detail map is uncapped makes the "
+                         "small map look far denser than the country, so leave "
+                         "this alone unless the file size forces it.")
     a = ap.parse_args()
 
     files = catalogue_files(a.product, a.prominence)
@@ -1183,7 +1204,7 @@ def main() -> None:
     export_geography()
     # One call, both maps: export_event segments the window once and cuts the
     # domain view and the Jakarta view from the same labels.
-    export_event(a.event_start, f"{a.event_end} 23:59", JAKARTA_BBOX,
+    export_event(a.map_start, f"{a.map_end} 23:59", JAKARTA_BBOX,
                  a.prominence, a.product, sc, places=JAKARTA_PLACES,
                  label="Jakarta, New Year 2020", domain_n=a.tracks_n)
     export_rank_context(vols, a.event_start, f"{a.event_end} 23:59",
