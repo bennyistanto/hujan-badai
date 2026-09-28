@@ -1768,3 +1768,86 @@ At 253,000 events a year, a rate low enough to mean "worth a warning" is necessa
 deep in the tail, so the lowest class stays crowded whatever is chosen. Only rates in
 the tens of thousands per year spread the population, and those are percentiles
 wearing a rate's clothing. Recorded so the choice is visible rather than inherited.
+
+## Run 24 - 2026-09-28, independent audit of the Jakarta numbers
+
+Prompted by a reasonable objection: Jakarta recorded 200 to 350 mm on 1 January 2020,
+a record daily total, so why does the page call the storms low severity? Everything
+the section rests on was recomputed with separate arithmetic rather than by re-reading
+the pipeline's own functions.
+
+### Finding 63: the unit chain is correct, checked end to end
+
+| Check | Pipeline | Independent | Agreement |
+|---|---|---|---|
+| Cell area at 6.05S | 122,954,786 m2 | 122,954,786 m2 | rel. diff 1.2e-16 |
+| Cell side at equator | - | 11.12 km | matches 0.1 deg |
+| `DT_HOURS` | 0.5 | half-hourly product | depth = rate x 0.5 |
+| Max rate in the 6-day cube | - | 57.0 mm/hr | plausible for IMERG |
+
+The cell area was checked against a spherical-zone band divided by the number of cells
+around the globe, which shares no code with `cell_area_m2`.
+
+The largest catalogued storm over the box, 0.7209 km3, accounts for **28.0% of all wet
+volume inside its own bounding box over its own lifetime**. That must be at or below
+100% since the box also contains other storms, and 28% is sensible for an object that
+does not fill its bounding box. Its mean depth over its largest footprint is 26.1 mm
+and its implied mean rate 1.49 mm/hr over a 17.5 h life. Nothing is out by a factor
+of two, ten, or 3600.
+
+Severity thresholds recomputed from a fresh sort of all 12,453,713 non-truncated
+storms: 500/yr gives 1.1502 km3, 50/yr gives 2.1747 km3, identical to the exported
+values. The Jakarta storm at 0.7209 km3 is below the first, so **"very low" is
+arithmetically correct**.
+
+### Finding 64: IMERG sees about half the flood's peak daily rainfall
+
+DKI Jakarta, by **local** calendar day (UTC+7), which is the form a gauge reports:
+
+| Local day | Areal mean | Wettest cell |
+|---|---|---|
+| 2019-12-31 | 47.9 mm | 80.3 mm |
+| **2020-01-01** | **92.8 mm** | **109.5 mm** |
+| 2020-01-02 | 16.3 mm | 24.8 mm |
+
+Best rolling 24 h on any cell in a wider box around the city: **190.5 mm**, at
+2019-12-31 23:30 UTC.
+
+Against gauge reports of 200 to 380 mm for 1 January, the satellite reads roughly
+**half**, and on the calendar day itself closer to a third of the high end. Two
+reasons, both expected: an 11 km cell averages over an area much larger than the
+convective core that produces a gauge extreme, and passive microwave retrievals smooth
+heavy rain.
+
+**Consequence for everything downstream.** The catalogue's volumes are computed
+correctly from what IMERG reports, and what IMERG reports is low at the extreme. So a
+low severity class over Jakarta has three independent causes stacked on top of each
+other, and only the third is a method choice:
+
+1. the satellite under-reads the peak by about 2x;
+2. a storm object spreads its volume over a large footprint, so even a large total is
+   a modest mean depth (26 mm here);
+3. the severity band starts at 1.15 km3 and this object is 0.72 km3.
+
+None of these is an error. Together they are a precise statement of what this
+catalogue cannot be used for.
+
+### Also fixed: the two maps were showing different objects
+
+The full-domain map read the year catalogues while the Jakarta detail map re-segmented
+the window from the cube, because the detail panel needs per-step values the catalogue
+does not store. Same four days, two segmentations, and the tracks visibly disagreed.
+
+Both maps are now cut from one segmentation. Storms appearing on both are identical in
+id, volume and start time. They still differ in content, correctly: the domain map
+keeps only the 400 largest storms nationally and just **15 of the 134** storms over
+Jakarta clear that bar, which is itself worth stating on the page.
+
+### Method note: centroid speed is not storm speed
+
+The per-storm detail panel reports the speed of the volume-weighted centre between
+half-hourly positions. It spikes above 80 km/h. That is not motion: when a new cell
+inside the same object brightens far from the old core, the centre jumps. The median,
+13.9 km/h for the storm examined, is the usable statistic, and it sits near the 9 km/h
+implied independently by Finding 53 from offshore distance divided by hours at sea.
+The page says so rather than presenting the spikes as speeds.
