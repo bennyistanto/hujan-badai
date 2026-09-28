@@ -1851,3 +1851,165 @@ inside the same object brightens far from the old core, the centre jumps. The me
 13.9 km/h for the storm examined, is the usable statistic, and it sits near the 9 km/h
 implied independently by Finding 53 from offshore distance divided by hours at sea.
 The page says so rather than presenting the spikes as speeds.
+
+## Run 25 - 2026-09-28, external check against a 2020-era IMERG Late extraction
+
+The user supplied `Jakarta_Flood_2020_timeseries.xlsx`, a 3x3 grid of IMERG cells over
+DKI Jakarta at half-hourly steps, pulled from **IMERG Late on 3 January 2020**. That
+is V06 Late extracted contemporaneously, against V07 Final read here six years later:
+different product, different version, different extraction tool, same cells. The
+closest thing to an independent check this project has had.
+
+The cell centres match exactly: lon 106.75 / 106.85 / 106.95, lat -6.15 / -6.25 /
+-6.35, the same nine cells this project calls DKI Jakarta.
+
+### Finding 65: the two records agree to 4.3%, once the time base is reconciled
+
+As labelled, the two series **anti-correlate** (r = -0.08 on the areal mean), which
+cannot be right for the same cells over the same hours. Scanning the lag:
+
+| Offset applied to the spreadsheet | Pearson r |
+|---|---|
+| 0 h (as labelled) | -0.08 |
+| -6.0 h | +0.36 |
+| -7.0 h | +0.712 |
+| **-7.5 h** | **+0.737** |
+| -8.0 h | +0.684 |
+| -9.0 h | +0.44 |
+
+**The spreadsheet is timestamped in Jakarta local time (WIB, UTC+7)**, this project
+works in UTC, and the residual half step is the usual labelling convention difference
+over whether a half-hourly value is stamped at the start or the end of its window.
+Aligned, per-cell correlations run +0.47 to +0.68.
+
+Totals over the aligned 24-hour window, all nine cells:
+
+| | Sum |
+|---|---|
+| Spreadsheet (IMERG Late V06, Jan 2020) | 2,280.3 |
+| This project (IMERG Final V07, read 2026) | 2,381.4 |
+| **Ratio** | **0.958** |
+
+**A 4.3% difference across a product change, a version change and six years of
+reprocessing.** That is a strong validation of the loading, subsetting and gridding in
+`imerg_io.py`, and it is consistent with Finding 5, which measured Late reading about
+9% higher than Final in total volume over a longer sample.
+
+### Finding 66: the 200 to 350 mm read from that spreadsheet is a sum of rates, not a depth
+
+The spreadsheet's per-cell column sums are 191 to 360, and those numbers land squarely
+on the 200 to 380 mm that gauges reported for 1 January 2020, which makes them look
+like confirmation. They are not a depth.
+
+The values are the raw IMERG variable, **mm/hr**, and the steps are half-hourly. The
+arithmetic settles it: if they were depths, the spreadsheet would exceed this project's
+Final by 92%, which no Late-minus-Final difference approaches. Read as rates they agree
+to 4.3%. So the depth each cell received is **half the column sum**:
+
+| Cell | Column sum | Actual depth |
+|---|---|---|
+| 106.95, -6.25 (wettest) | 359.8 | **179.9 mm** |
+| 106.85, -6.25 | 306.1 | 153.1 mm |
+| 106.75, -6.15 (driest) | 201.0 | 100.5 mm |
+
+**This is the same `R * 0.5` factor recorded at the very start of this project** as the
+one that doubles everything if omitted. Encountering it again in an independent
+extraction, where the doubled figure happens to coincide with the true gauge range, is
+the clearest possible argument for stating the unit with every number.
+
+### What it does NOT change
+
+The conclusion of Finding 64 stands and is now better supported. The satellite depth
+over the wettest Jakarta cell is about 180 mm in Late V06 and 129 mm in Final V07 over
+this window, against gauge reports of 200 to 380 mm for the day. **Both satellite
+products see roughly half to two thirds of what the worst gauges recorded**, and the
+spreadsheet corroborates that rather than contradicting it.
+
+The severity result is unaffected: it is computed from Final, Final agrees with an
+independent Late extraction to 4.3%, and the storm objects are below the severity band
+because of their footprint-averaged volume, not because of a loading error.
+
+## Run 26 - 2026-09-28, a display cap that manufactured a pattern
+
+Noticed by the user: the national map looked sparse while the Jakarta map looked
+crowded, for the same period. The cause was not in the data.
+
+### Finding 67: capping one map and not the other invented a 29x density difference
+
+The national map drew the 400 largest storms by volume; the Jakarta map drew every
+storm in its box. Same segmentation, same days, different selection rules.
+
+| | National map | Jakarta map |
+|---|---|---|
+| Smallest storm drawn | 0.2504 km3 | 0.0004 km3 |
+| Extent | 859 sq deg | 9.9 sq deg |
+| Storms drawn per sq deg | 0.47 | 13.56 |
+
+**119 of the Jakarta map's 134 storms were below the national map's cut-off.** The
+small box therefore appeared about **29 times denser** in tracks than the rest of the
+country, which would read as West Java being extraordinarily stormy that week. The
+data says the opposite: those two months rank 182nd and 174th of 333 nationally.
+
+Both maps are now uncapped over the same window. Measured honestly, the Jakarta box is
+**2.2x** denser in tracks than the domain average, which is a real and modest signal,
+and is partly just that the domain average includes a great deal of open ocean.
+
+The window was narrowed from four days to two, 2019-12-31 to 2020-01-01, to keep the
+uncapped national map legible: 2,806 storms rather than 5,595. That window is also the
+one Finding 62 identifies as the record 2-day total for Jabodetabek, so the maps and
+the ranking now agree on what "the event" means. The accumulation panel keeps the
+wider four-day span deliberately, because a catchment responds to the build-up and
+Finding 62's whole point is that the window length changes the answer.
+
+Transfer cost of showing everything: `site/data` gzips to 397 KB, against 623 KB for
+the uncapped four-day version and about 300 KB when capped. Nothing here justified the
+distortion.
+
+**The general lesson.** A display limit is a selection rule, and applying different
+selection rules to two panels that invite comparison produces a finding that exists
+only in the rendering. Any cap has to be stated, and two maps meant to be read
+together have to share one.
+
+## Run 27 - 2026-09-28, labelling the dashboard honestly
+
+Two problems found while adding a period label to every chart, one of which was a real
+bug rather than a presentation gap.
+
+### Finding 68: every chart now states its own span, because the page mixes three
+
+The page moves between a two-day window for the flood maps, a four-day window for the
+accumulation panels, a single storm's life for the detail panel, two chosen months for
+the parameter sweep, and the full 1998 to 2025 record for the climatology. A reader had
+to infer which from the surrounding prose.
+
+All 27 charts now carry a period badge directly above the plot, written from the data
+where the data knows it. The string for the full record is derived once from
+`summary.json`, so a rebuild that changes the record length changes every badge
+together rather than leaving some stale.
+
+### Finding 69: the time axes were being shifted by the reader's own time zone
+
+The exporter writes timestamps without a zone suffix, `"2019-12-31T05:00:00"`, and
+JavaScript's `new Date` reads that form as **local** time. Every label built with
+`toISOString()` was therefore shifted by the viewer's own UTC offset:
+
+| | Value |
+|---|---|
+| In the JSON | `2019-12-31T05:00:00` |
+| Panel title, viewed at UTC+7 | `2019-12-30 22:00 UTC` |
+| Correct | `2019-12-31 05:00 UTC` |
+
+The page was off by seven hours in Jakarta, right in London, and wrong by a different
+amount almost everywhere else, while labelling all of it "UTC". It was caught only
+because the new period badge slices the raw string and so disagreed with the title
+above it.
+
+Fixed by parsing explicitly as UTC and pairing that with `type: "utc"` axes and
+`d3.utcHour` binning, so tick marks, bin edges and text labels are all UTC for every
+viewer. Verified against a value read straight from the JSON: the wettest hour over
+Jakarta is 2019-12-31 20:00 UTC in the file and sits under the same hour on the chart.
+
+**The general point.** A naive ISO timestamp is not a time until a zone is attached,
+and a chart that says "UTC" while formatting in local time is worse than one that says
+nothing. This project segments in UTC and interprets in local time by deliberate choice
+(Findings 48-49); the dashboard was quietly breaking the second half of that.
