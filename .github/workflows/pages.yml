@@ -1,0 +1,80 @@
+# Publishes site/ to GitHub Pages at https://bennyistanto.github.io/hujan-badai/
+#
+# This workflow does NOT compute anything. The numbers on the dashboard come from
+# site/data/*.json, which src/export_site.py writes locally from the 2.6 GB catalogue.
+# That catalogue is not in the repository and could not be rebuilt in an Action
+# anyway: it needs the IMERG archive and about nine hours. So the flow is:
+#
+#   1. build or update the catalogue locally
+#   2. python src/export_site.py
+#   3. commit site/data/
+#   4. push, and this workflow publishes it
+#
+# The check below exists because the failure it catches is silent otherwise: if the
+# JSON is missing, Pages serves a page whose panels all read "not available".
+
+name: Deploy dashboard to Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time. Queued rather than cancelled, so a push that lands while
+# a deploy is running still reaches the site instead of being dropped.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the exported data is present
+        run: |
+          missing=0
+          for f in summary method seasonal annual regional concentration severity \
+                   sweep diurnal leadtime families tracks_domain tracks_jakarta \
+                   accumulation rank_context family_severity \
+                   land_domain land_jakarta; do
+            if [ ! -s "site/data/$f.json" ]; then
+              echo "::error::site/data/$f.json is missing or empty"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            echo "Run 'python src/export_site.py' locally and commit site/data/."
+            exit 1
+          fi
+          echo "All data files present:"
+          du -ch site/data/*.json | tail -1
+
+      - name: Validate every JSON file parses
+        run: |
+          for f in site/data/*.json; do
+            python -c "import json,sys; json.load(open(sys.argv[1], encoding='utf-8'))" "$f" \
+              || { echo "::error::$f is not valid JSON"; exit 1; }
+          done
+          echo "All JSON parses."
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
